@@ -11,6 +11,23 @@ _Changes in the next release_
 
 ---
 
+## v0.13.8 - 2024-04-01
+### Changed
+- Use unique device name prefix for pairing to easily identify paired devices on Apple TV ([feature-and-bug-tracker#362](https://github.com/unfoldedcircle/feature-and-bug-tracker/issues/362)).
+
+## v0.13.7 - 2024-03-18
+### Fixed
+- Prevent device power-on in standby with power-off command ([feature-and-bug-tracker#349](https://github.com/unfoldedcircle/feature-and-bug-tracker/issues/349)).
+
+## v0.13.6 - 2024-03-13
+### Changed
+- Update ucapi library: filter out base64 image data in message logs.
+
+## v0.13.5 - 2024-03-13
+### Changed
+- Use menu feature instead of settings for control-center ([feature-and-bug-tracker#56](https://github.com/unfoldedcircle/feature-and-bug-tracker/issues/56)).
+- Enhance setup instructions that the device must be in the same network.
+
 ## v0.13.4 - 2024-03-09
 ### Fixed
 - Invalid driver metadata file for the Remote Two ([feature-and-bug-tracker#340](https://github.com/unfoldedcircle/feature-and-bug-tracker/issues/340)).

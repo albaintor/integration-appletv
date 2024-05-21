@@ -7,6 +7,8 @@ Setup flow for Apple TV Remote integration.
 
 import asyncio
 import logging
+import os
+import socket
 from enum import IntEnum
 
 import config
@@ -61,9 +63,18 @@ _user_input_discovery = RequestUserInput(
             "field": {
                 "label": {
                     "value": {
-                        "en": "Leave blank to use auto-discovery and click _Next_.",
-                        "de": "Leer lassen, um automatische Erkennung zu verwenden und auf _Weiter_ klicken.",
-                        "fr": "Laissez le champ vide pour utiliser la découverte automatique et cliquez sur _Suivant_.",  # noqa: E501
+                        "en": (
+                            "Leave blank to use auto-discovery and click _Next_."
+                            "The device must be on the same network as the remote."
+                        ),
+                        "de": (
+                            "Leer lassen, um automatische Erkennung zu verwenden und auf _Weiter_ klicken."
+                            "Das Gerät muss sich im gleichen Netzwerk wie die Fernbedienung befinden."
+                        ),
+                        "fr": (
+                            "Laissez le champ vide pour utiliser la découverte automatique et cliquez sur _Suivant_."
+                            "L'appareil doit être sur le même réseau que la télécommande"
+                        ),
                     }
                 }
             },
@@ -71,7 +82,11 @@ _user_input_discovery = RequestUserInput(
         {
             "field": {"text": {"value": ""}},
             "id": "address",
-            "label": {"en": "IP address", "de": "IP-Adresse", "fr": "Adresse IP"},
+            "label": {
+                "en": "IP address (same network only)",
+                "de": "IP-Adresse (nur im gleichen Netzwerk)",
+                "fr": "Adresse IP (seulement dans le même réseau)",
+            },
         },
     ],
 )
@@ -371,7 +386,8 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Set
     _LOG.debug("Pairing process begin")
     # Hook up to signals
     # TODO error conditions in start_pairing?
-    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.AirPlay, "Remote Two Airplay")
+    name = os.getenv("UC_CLIENT_NAME", socket.gethostname().split(".", 1)[0])
+    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.AirPlay, f"{name} Airplay")
     if res is None:
         return SetupError()
 
@@ -426,7 +442,8 @@ async def _handle_user_data_airplay_pin(msg: UserDataResponse) -> RequestUserInp
     _pairing_apple_tv.add_credentials(c)
 
     # Start new pairing process
-    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.Companion, "Remote Two Companion")
+    name = os.getenv("UC_CLIENT_NAME", socket.gethostname().split(".", 1)[0])
+    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.Companion, f"{name} Companion")
     if res is None:
         return SetupError()
 
