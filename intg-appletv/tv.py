@@ -32,7 +32,7 @@ from pyatv.const import (
     ShuffleState,
 )
 from pyatv.protocols.companion import CompanionAPI, SystemStatus
-from pyee import AsyncIOEventEmitter
+from pyee.asyncio import AsyncIOEventEmitter
 
 _LOG = logging.getLogger(__name__)
 
@@ -248,11 +248,11 @@ class AppleTv:
 
         return atvs[0]
 
-    def add_credentials(self, credentials: dict[AtvProtocol, str]) -> None:
+    def add_credentials(self, credentials: dict[str, str]) -> None:
         """Add credentials for a protocol."""
         self._device.credentials.append(credentials)
 
-    def get_credentials(self) -> list[dict[AtvProtocol, str]]:
+    def get_credentials(self) -> list[dict[str, str]]:
         """Return stored credentials."""
         return self._device.credentials
 
@@ -331,18 +331,19 @@ class AppleTv:
         _LOG.debug("[%s] Connect loop ended", self.log_id)
         self._connect_task = None
 
-        # Add callback listener for various push updates
-        self._atv.push_updater.listener = self
-        self._atv.push_updater.start()
-        self._atv.listener = self
-        self._atv.audio.listener = self
+        # Add callback listener for various push
+        if self._atv is not None:
+            self._atv.push_updater.listener = self
+            self._atv.push_updater.start()
+            self._atv.listener = self
+            self._atv.audio.listener = self
 
         # Reset the backoff counter
         self._connection_attempts = 0
 
         await self._start_polling()
 
-        if self._atv.features.in_state(FeatureState.Available, FeatureName.AppList):
+        if self._atv is not None and self._atv.features.in_state(FeatureState.Available, FeatureName.AppList):
             self._loop.create_task(self._update_app_list())
 
         self.events.emit(EVENTS.CONNECTED, self._device.identifier)
@@ -545,6 +546,7 @@ class AppleTv:
         try:
             # TODO check if there's a nicer way to get to the CompanionAPI
             # Screensaver state is only accessible in SystemStatus
+            # There is a bug with this method, see https://github.com/postlund/pyatv/issues/2648
             if self._atv and isinstance(self._atv.apps.main_instance.api, CompanionAPI):
                 system_status = await self._atv.apps.main_instance.api.fetch_attention_state()
                 return system_status

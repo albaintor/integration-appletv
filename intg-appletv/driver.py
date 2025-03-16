@@ -9,6 +9,7 @@ This module implements a Remote Two integration driver for Apple TV devices.
 import asyncio
 import logging
 import os
+import sys
 from enum import Enum
 from typing import Any
 
@@ -21,6 +22,8 @@ import ucapi
 import ucapi.api as uc
 from ucapi import MediaPlayer, media_player
 
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 _LOOP = asyncio.get_event_loop()
 
@@ -178,16 +181,17 @@ async def media_player_cmd_handler(
             # Mimic the original ATV remote behaviour (one can also call it a bunch of workarounds).
             # Screensaver active: play/pause button exits screensaver. If a playback was paused, resume it.
             state = configured_entity.attributes[media_player.Attributes.STATE]
-            if state != media_player.States.PLAYING and await device.screensaver_active():
-                _LOG.debug("Screensaver is running, sending menu command for play_pause to exit")
-                await device.menu()
-                if state == media_player.States.PAUSED:
-                    # another awkwardness: the play_pause button doesn't work anymore after exiting the screensaver.
-                    # One has to send a dpad select first to start playback. Afterward, play_pause works again...
-                    await asyncio.sleep(1)  # delay required, otherwise the second button press is ignored
-                    return await device.cursor_select()
-                # Nothing was playing, only the screensaver was active
-                return ucapi.StatusCodes.OK
+            # TODO disabled because of https://github.com/postlund/pyatv/issues/2648
+            # if state != media_player.States.PLAYING and await device.screensaver_active():
+            #     _LOG.debug("Screensaver is running, sending menu command for play_pause to exit")
+            #     await device.menu()
+            #     if state == media_player.States.PAUSED:
+            #         # another awkwardness: the play_pause button doesn't work anymore after exiting the screensaver.
+            #         # One has to send a dpad select first to start playback. Afterward, play_pause works again...
+            #         await asyncio.sleep(1)  # delay required, otherwise the second button press is ignored
+            #         return await device.cursor_select()
+            #     # Nothing was playing, only the screensaver was active
+            #     return ucapi.StatusCodes.OK
             res = await device.play_pause()
         case media_player.Commands.NEXT:
             res = await device.next()
