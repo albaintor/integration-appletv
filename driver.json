@@ -1,13 +1,13 @@
 {
-	"driver_id": "uc_appletv_driver",
-	"version": "0.14.0",
+	"driver_id": "appletv",
+	"version": "0.15.3",
 	"min_core_api": "0.7.0",
 	"name": { "en": "Apple TV" },
 	"icon": "uc:integration",
 	"description": {
-		"en": "Control your Apple TV with Remote Two.",
-		"de": "Steuere Apple TV mit Remote Two.",
-		"fr": "Contrôler votre Apple TV avec Remote Two."
+		"en": "Control your Apple TV with Remote Two/3.",
+		"de": "Steuere Apple TV mit Remote Two/3.",
+		"fr": "Contrôler votre Apple TV avec Remote Two/3."
 	},
 	"developer": {
 		"name": "Unfolded Circle ApS",

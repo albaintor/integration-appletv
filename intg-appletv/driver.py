@@ -9,7 +9,6 @@ This module implements a Remote Two integration driver for Apple TV devices.
 import asyncio
 import logging
 import os
-import sys
 from enum import Enum
 from typing import Any
 
@@ -22,8 +21,6 @@ import ucapi
 import ucapi.api as uc
 from ucapi import MediaPlayer, media_player
 
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 _LOOP = asyncio.get_event_loop()
 
@@ -45,6 +42,22 @@ class SimpleCommands(str, Enum):
     """Show running applications."""
     SCREENSAVER = "SCREENSAVER"
     """Run screensaver."""
+    SKIP_FORWARD = "SKIP_FORWARD"
+    """Skip forward a time interval."""
+    SKIP_BACKWARD = "SKIP_BACKWARD"
+    """Skip forward a time interval."""
+    FAST_FORWARD_BEGIN = "FAST_FORWARD_BEGIN"
+    """Fast forward using Companion protocol."""
+    REWIND_BEGIN = "REWIND_BEGIN"
+    """Rewind using Companion protocol."""
+    SWIPE_LEFT = "SWIPE_LEFT"
+    """Swipe left using Companion protocol."""
+    SWIPE_RIGHT = "SWIPE_RIGHT"
+    """Swipe right using Companion protocol."""
+    SWIPE_UP = "SWIPE_UP"
+    """Swipe up using Companion protocol."""
+    SWIPE_DOWN = "SWIPE_DOWN"
+    """Swipe down using Companion protocol."""
 
 
 @api.listens_to(ucapi.Events.CONNECT)
@@ -180,18 +193,24 @@ async def media_player_cmd_handler(
         case media_player.Commands.PLAY_PAUSE:
             # Mimic the original ATV remote behaviour (one can also call it a bunch of workarounds).
             # Screensaver active: play/pause button exits screensaver. If a playback was paused, resume it.
+
+            # tvOS 18.4 will raise an exception https://github.com/postlund/pyatv/issues/2648
+            # Screensaver state is no longer accessible
             state = configured_entity.attributes[media_player.Attributes.STATE]
-            # TODO disabled because of https://github.com/postlund/pyatv/issues/2648
-            # if state != media_player.States.PLAYING and await device.screensaver_active():
-            #     _LOG.debug("Screensaver is running, sending menu command for play_pause to exit")
-            #     await device.menu()
-            #     if state == media_player.States.PAUSED:
-            #         # another awkwardness: the play_pause button doesn't work anymore after exiting the screensaver.
-            #         # One has to send a dpad select first to start playback. Afterward, play_pause works again...
-            #         await asyncio.sleep(1)  # delay required, otherwise the second button press is ignored
-            #         return await device.cursor_select()
-            #     # Nothing was playing, only the screensaver was active
-            #     return ucapi.StatusCodes.OK
+            # pylint: disable=W0718
+            try:
+                if state != media_player.States.PLAYING and await device.screensaver_active():
+                    _LOG.debug("Screensaver is running, sending menu command for play_pause to exit")
+                    await device.menu()
+                    if state == media_player.States.PAUSED:
+                        # another awkwardness: the play_pause button doesn't work anymore after exiting the screensaver.
+                        # One has to send a dpad select first to start playback. Afterward, play_pause works again...
+                        await asyncio.sleep(1)  # delay required, otherwise the second button press is ignored
+                        return await device.cursor_select()
+                    # Nothing was playing, only the screensaver was active
+                    return ucapi.StatusCodes.OK
+            except Exception:
+                pass
             res = await device.play_pause()
         case media_player.Commands.NEXT:
             res = await device.next()
@@ -219,7 +238,6 @@ async def media_player_cmd_handler(
             res = await device.rewind()
         case media_player.Commands.FAST_FORWARD:
             res = await device.fast_forward()
-
         case media_player.Commands.REPEAT:
             mode = _get_cmd_param("repeat", params)
             res = await device.set_repeat(mode) if mode else ucapi.StatusCodes.BAD_REQUEST
@@ -230,7 +248,6 @@ async def media_player_cmd_handler(
             res = await device.context_menu()
         case media_player.Commands.MENU:
             res = await device.control_center()
-
         case media_player.Commands.HOME:
             res = await device.home()
 
@@ -263,6 +280,27 @@ async def media_player_cmd_handler(
             res = await device.app_switcher()
         case SimpleCommands.SCREENSAVER:
             res = await device.screensaver()
+        case SimpleCommands.SKIP_FORWARD:
+            res = await device.skip_forward()
+        case SimpleCommands.SKIP_BACKWARD:
+            res = await device.skip_backward()
+        case SimpleCommands.FAST_FORWARD_BEGIN:
+            res = await device.fast_forward_companion()
+        case SimpleCommands.REWIND_BEGIN:
+            res = await device.rewind_companion()
+        case media_player.Commands.SELECT_SOUND_MODE:
+            mode = _get_cmd_param("mode", params)
+            res = await device.set_output_device(mode)
+        case media_player.Commands.SEEK:
+            res = await device.set_media_position(params.get("media_position", 0))
+        case SimpleCommands.SWIPE_LEFT:
+            res = await device.swipe(1000, 500, 50, 500, 200)
+        case SimpleCommands.SWIPE_RIGHT:
+            res = await device.swipe(50, 500, 1000, 500, 200)
+        case SimpleCommands.SWIPE_UP:
+            res = await device.swipe(500, 1000, 500, 50, 200)
+        case SimpleCommands.SWIPE_DOWN:
+            res = await device.swipe(500, 50, 500, 1000, 200)
 
     return res
 
@@ -381,6 +419,17 @@ async def on_atv_update(entity_id: str, update: dict[str, Any] | None) -> None:
                 attributes[media_player.Attributes.SOURCE_LIST] = update["sourceList"]
         else:
             attributes[media_player.Attributes.SOURCE_LIST] = update["sourceList"]
+    if (
+        "sound_mode" in update
+        and target_entity.attributes.get(media_player.Attributes.SOUND_MODE, "") != update["sound_mode"]
+    ):
+        attributes[media_player.Attributes.SOUND_MODE] = update["sound_mode"]
+    if "sound_mode_list" in update:
+        if media_player.Attributes.SOUND_MODE_LIST in target_entity.attributes:
+            if len(target_entity.attributes[media_player.Attributes.SOUND_MODE_LIST]) != len(update["sound_mode_list"]):
+                attributes[media_player.Attributes.SOUND_MODE_LIST] = update["sound_mode_list"]
+        else:
+            attributes[media_player.Attributes.SOUND_MODE_LIST] = update["sound_mode_list"]
     if "media_type" in update:
         if update["media_type"] == pyatv.const.MediaType.Music:
             media_type = media_player.MediaType.MUSIC
@@ -483,6 +532,8 @@ def _register_available_entities(identifier: str, name: str) -> bool:
         media_player.Features.MENU,
         media_player.Features.REWIND,
         media_player.Features.FAST_FORWARD,
+        media_player.Features.SELECT_SOUND_MODE,
+        media_player.Features.SEEK,
     ]
     if ENABLE_REPEAT_FEAT:
         features.append(media_player.Features.REPEAT)
@@ -510,6 +561,14 @@ def _register_available_entities(identifier: str, name: str) -> bool:
                 SimpleCommands.TOP_MENU.value,
                 SimpleCommands.APP_SWITCHER.value,
                 SimpleCommands.SCREENSAVER.value,
+                SimpleCommands.SKIP_FORWARD.value,
+                SimpleCommands.SKIP_BACKWARD.value,
+                SimpleCommands.FAST_FORWARD_BEGIN.value,
+                SimpleCommands.REWIND_BEGIN.value,
+                SimpleCommands.SWIPE_LEFT.value,
+                SimpleCommands.SWIPE_RIGHT.value,
+                SimpleCommands.SWIPE_UP.value,
+                SimpleCommands.SWIPE_DOWN.value,
             ]
         },
         cmd_handler=media_player_cmd_handler,

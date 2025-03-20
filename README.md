@@ -1,10 +1,10 @@
-# Apple TV integration for Remote Two
+# Apple TV integration for Remote Two/3
 
 Using [pyatv](https://github.com/postlund/pyatv) and [uc-integration-api](https://github.com/aitatoi/integration-python-library)
 
 The driver discovers Apple TV devices on the network and pairs them using AirPlay and companion protocols.
 A [media player entity](https://github.com/unfoldedcircle/core-api/blob/main/doc/entities/entity_media_player.md)
-is exposed to the Remote Two.
+is exposed to the Remote Two/3.
 
 Supported versions:
 - Apple TV 4 and newer models with TvOS 16+
@@ -17,6 +17,7 @@ Supported attributes:
 - Artwork
 - Media duration
 - Media position
+- Sound mode (list of output device(s) streamed to)
 
 Supported commands:
 - Turn on & off (device will be put into standby)
@@ -31,6 +32,7 @@ Supported commands:
 - Launch application
 - App switcher
 - Start screensaver
+- Stream audio to one or multiple output devices
 
 Please note that certain commands like channel up & down are app dependant and don't work with every app!
 
@@ -44,11 +46,11 @@ Please note that certain commands like channel up & down are app dependant and d
 pip3 install -r requirements.txt
 ```
 
-For running a separate integration driver on your network for Remote Two, the configuration in file
+For running a separate integration driver on your network for Remote Two/3, the configuration in file
 [driver.json](driver.json) needs to be changed:
 
 - Set `driver_id` to a unique value, `uc_appletv_driver` is already used for the embedded driver in the firmware.
-- Change `name` to easily identify the driver for discovery & setup  with Remote Two or the web-configurator.
+- Change `name` to easily identify the driver for discovery & setup  with Remote Two/3 or the web-configurator.
 - Optionally add a `"port": 8090` field for the WebSocket server listening port.
     - Default port: `9090`
     - This is also overrideable with environment variable `UC_INTEGRATION_HTTP_PORT`
@@ -67,12 +69,18 @@ Otherwise, the `HOME` path is used or the working directory as fallback.
 
 The client name prefix used for pairing can be set in ENV variable `UC_CLIENT_NAME`. The hostname is used by default.
 
-## Build self-contained binary
+## Build distribution binary
 
-After some tests, turns out python stuff on embedded is a nightmare. So we're better off creating a single binary file
-that has everything in it.
+After some tests, turns out Python stuff on embedded is a nightmare. So we're better off creating a binary distribution
+that has everything in it, including the Python runtime and all required modules and native libraries.
 
-To do that, we need to compile it on the target architecture as `pyinstaller` does not support cross compilation.
+To do that, we use [PyInstaller](https://pyinstaller.org/), but it needs to run on the target architecture as
+`PyInstaller` does not support cross compilation.
+
+The `--onefile` option to create a one-file bundled executable should be avoided:
+- Higher startup cost, since the wrapper binary must first extract the archive.
+- Files are extracted to the /tmp directory on the device, which is an in-memory filesystem.  
+  This will further reduce the available memory for the integration drivers!
 
 ### x86-64 Linux
 
@@ -82,7 +90,7 @@ sudo apt install qemu binfmt-support qemu-user-static
 docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 ```
 
-Run pyinstaller:
+Run PyInstaller:
 ```shell
 docker run --rm --name builder \
     --platform=aarch64 \
@@ -91,7 +99,7 @@ docker run --rm --name builder \
     docker.io/unfoldedcircle/r2-pyinstaller:3.11.6  \
     bash -c \
       "python -m pip install -r requirements.txt && \
-      pyinstaller --clean --onefile --name intg-appletv intg-appletv/driver.py"
+      pyinstaller --clean --onedir --name intg-appletv --collect-all zeroconf intg-appletv/driver.py"
 ```
 
 ### aarch64 Linux / Mac
@@ -104,7 +112,7 @@ docker run --rm --name builder \
     docker.io/unfoldedcircle/r2-pyinstaller:3.11.6  \
     bash -c \
       "python -m pip install -r requirements.txt && \
-      pyinstaller --clean --onefile --name intg-appletv intg-appletv/driver.py"
+      pyinstaller --clean --onedir --name intg-appletv --collect-all zeroconf intg-appletv/driver.py"
 ```
 
 ## Versioning

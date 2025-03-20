@@ -1,4 +1,4 @@
-# Apple TV integration for Remote Two Changelog
+# Apple TV integration for Remote Two/3 Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -10,6 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _Changes in the next release_
 
 ---
+
+## v0.15.2 - 2025-03-07
+### Added
+- Add handling of app deep links. Contributed by @kennymc-c, thanks! ([#27](https://github.com/unfoldedcircle/integration-appletv/pull/27)).
+
+## v0.15.1 - 2024-12-06
+### Fixed
+- Multiple sound output : the current AppleTV device was disable when enabling other airplay devices ([#25](https://github.com/unfoldedcircle/integration-appletv/pull/25)).
+
+## v0.15.0 - 2024-09-27
+### Added
+- Add touch gestures as simple commands, support for seeking. Contributed by @albaintor, thanks! ([#24](https://github.com/unfoldedcircle/integration-appletv/pull/24))
+
+## v0.14.1 - 2024-07-23
+### Changed
+- Create a one-folder bundle with PyInstaller instead a one-file bundle to save resources.
+- Change archive format to the custom integration installation archive.
+- Change default `driver_id` value in `driver.json` to create a compatible custom installation archive.
+
+## v0.14.0 - 2024-07-09
+### Added
+- Stream to output devices through sound mode selection. Contributed by @albaintor, thanks! ([#20](https://github.com/unfoldedcircle/integration-appletv/pull/20))
+
+### Fixed
+- Simple commands FAST_FORWARD_BEGIN and REWIND_BEGIN remained stuck in some apps. Fixed by @albaintor, thanks! ([#22](https://github.com/unfoldedcircle/integration-appletv/pull/22))
+
+## v0.13.9 - 2024-06-14
+### Added
+- Simple commands for skip forward and backward, alternative FF/RW commands with companion protocol. Contributed by @albaintor, thanks! ([#19](https://github.com/unfoldedcircle/integration-appletv/pull/19))
 
 ## v0.13.8 - 2024-04-01
 ### Changed

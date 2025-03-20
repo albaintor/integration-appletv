@@ -10,17 +10,30 @@ Uses the [pyatv](https://github.com/postlund/pyatv) library with concepts borrow
 
 import asyncio
 import base64
+import itertools
 import logging
 import random
 from asyncio import AbstractEventLoop
-from enum import IntEnum
+from collections import OrderedDict
+from enum import Enum, IntEnum
 from functools import wraps
-from typing import Any, Awaitable, Callable, Concatenate, Coroutine, ParamSpec, TypeVar
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Concatenate,
+    Coroutine,
+    List,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 
 import pyatv
 import pyatv.const
 import ucapi
 from config import AtvDevice, AtvProtocol
+from pyatv import interface
 from pyatv.const import (
     DeviceState,
     FeatureName,
@@ -31,7 +44,9 @@ from pyatv.const import (
     RepeatState,
     ShuffleState,
 )
-from pyatv.protocols.companion import CompanionAPI, SystemStatus
+from pyatv.core.facade import FacadeRemoteControl, FacadeTouchGestures
+from pyatv.interface import BaseConfig, OutputDevice
+from pyatv.protocols.companion import CompanionAPI, MediaControlCommand, SystemStatus
 from pyee.asyncio import AsyncIOEventEmitter
 
 _LOG = logging.getLogger(__name__)
@@ -55,6 +70,14 @@ class EVENTS(IntEnum):
 
 _AppleTvT = TypeVar("_AppleTvT", bound="AppleTv")
 _P = ParamSpec("_P")
+
+
+class PlaybackState(Enum):
+    """Playback state for companion protocol."""
+
+    NORMAL = 0
+    FAST_FORWARD = 1
+    REWIND = 2
 
 
 # Adapted from Home Assistant `asyncLOG_errors` in
@@ -124,7 +147,7 @@ def async_handle_atvlib_errors(
     return wrapper
 
 
-class AppleTv:
+class AppleTv(interface.AudioListener):
     """Representing an Apple TV Device."""
 
     def __init__(
@@ -149,6 +172,9 @@ class AppleTv:
         self._poll_interval: int = 10
         self._state: DeviceState | None = None
         self._app_list: dict[str, str] = {}
+        self._available_output_devices: dict[str, str] = {}
+        self._output_devices: OrderedDict[str, [str]] = OrderedDict[str, [str]]()
+        self._playback_state = PlaybackState.NORMAL
 
     @property
     def identifier(self) -> str:
@@ -183,6 +209,19 @@ class AppleTv:
     def state(self) -> DeviceState | None:
         """Return the device state."""
         return self._state
+
+    @property
+    def output_devices_combinations(self) -> [str]:
+        """Return the list of possible selection (combinations) of output devices."""
+        return list(self._output_devices.keys())
+
+    @property
+    def output_devices(self) -> str:
+        """Return the current selection of output devices."""
+        device_names = []
+        for device in self._atv.audio.output_devices:
+            device_names.append(device.name)
+        return ", ".join(sorted(device_names, key=str.casefold))
 
     def _backoff(self) -> float:
         if self._connection_attempts * BACKOFF_SEC >= BACKOFF_MAX:
@@ -234,10 +273,10 @@ class AppleTv:
         update = {"volume": new_level}
         self.events.emit(EVENTS.UPDATE, self._device.identifier, update)
 
-    def outputdevices_update(self, old_devices, new_devices) -> None:
+    def outputdevices_update(self, old_devices: List[OutputDevice], new_devices: List[OutputDevice]) -> None:
         """Output device change callback handler, for example airplay speaker."""
-        # print('Output devices changed from {0:s} to {1:s}'.format(old_devices, new_devices))
-        # TODO check if this could be used to better handle volume control (if it's available or not)
+        _LOG.debug("[%s] Changed output devices to %s", self.log_id, self.output_devices)
+        self.events.emit(EVENTS.UPDATE, self._device.identifier, {"sound_mode": self.output_devices})
 
     async def _find_atv(self) -> pyatv.interface.BaseConfig | None:
         """Find a specific Apple TV on the network by identifier."""
@@ -248,11 +287,11 @@ class AppleTv:
 
         return atvs[0]
 
-    def add_credentials(self, credentials: dict[str, str]) -> None:
+    def add_credentials(self, credentials: dict[AtvProtocol, str]) -> None:
         """Add credentials for a protocol."""
         self._device.credentials.append(credentials)
 
-    def get_credentials(self) -> list[dict[str, str]]:
+    def get_credentials(self) -> list[dict[AtvProtocol, str]]:
         """Return stored credentials."""
         return self._device.credentials
 
@@ -331,20 +370,21 @@ class AppleTv:
         _LOG.debug("[%s] Connect loop ended", self.log_id)
         self._connect_task = None
 
-        # Add callback listener for various push
-        if self._atv is not None:
-            self._atv.push_updater.listener = self
-            self._atv.push_updater.start()
-            self._atv.listener = self
-            self._atv.audio.listener = self
+        # Add callback listener for various push updates
+        self._atv.push_updater.listener = self
+        self._atv.push_updater.start()
+        self._atv.listener = self
+        self._atv.audio.listener = self
 
         # Reset the backoff counter
         self._connection_attempts = 0
 
         await self._start_polling()
 
-        if self._atv is not None and self._atv.features.in_state(FeatureState.Available, FeatureName.AppList):
+        if self._atv.features.in_state(FeatureState.Available, FeatureName.AppList):
             self._loop.create_task(self._update_app_list())
+
+        self._loop.create_task(self._update_output_devices())
 
         self.events.emit(EVENTS.CONNECTED, self._device.identifier)
         _LOG.debug("[%s] Connected", self.log_id)
@@ -505,6 +545,61 @@ class AppleTv:
 
         self.events.emit(EVENTS.UPDATE, self._device.identifier, update)
 
+    async def _update_output_devices(self) -> None:
+        _LOG.debug("[%s] Updating available output devices list", self.log_id)
+        try:
+            atvs = await pyatv.scan(self._loop)
+            if self._atv is None:
+                return
+            current_output_devices = self._available_output_devices
+            current_output_device = self.output_devices
+            device_ids = []
+            self._available_output_devices = {}
+            for atv in atvs:
+                if atv.device_info.output_device_id == self._atv.device_info.output_device_id:
+                    continue
+                if atv.device_info.output_device_id not in device_ids:
+                    device_ids.append(atv.device_info.output_device_id)
+                    self._available_output_devices[atv.device_info.output_device_id] = atv.name
+        except pyatv.exceptions.NotSupportedError:
+            _LOG.warning("[%s] Output devices listing is not supported", self.log_id)
+            return
+        except pyatv.exceptions.ProtocolError:
+            _LOG.warning("[%s] Output devices: protocol error", self.log_id)
+            return
+        update = {}
+        if set(current_output_devices.keys()) != set(self._available_output_devices.keys()) and len(device_ids) > 0:
+            # Build combinations of output devices. First device in the list is the current Apple TV
+            # When selecting this entry, it will disable all output devices
+            self._output_devices = OrderedDict()
+            self._output_devices[self._device.name] = []
+            self._build_output_devices_list(atvs, device_ids)
+            update["sound_mode_list"] = list(self._output_devices.keys())
+
+        if current_output_device != self.output_devices:
+            update["sound_mode"] = self.output_devices
+
+        _LOG.debug("Updated sound mode list : %s", update)
+
+        if update:
+            self.events.emit(EVENTS.UPDATE, self._device.identifier, update)
+
+    def _build_output_devices_list(self, atvs: list[BaseConfig], device_ids: [str]):
+        """Build possible combinations of output devices."""
+        # Don't go beyond combinations of 5 devices
+        max_len = min(len(device_ids), 4)
+        for i in range(0, max_len):
+            combinations = itertools.combinations(device_ids, i + 1)
+            for combination in combinations:
+                device_names: [str] = []
+                for device_id in combination:
+                    for atv in atvs:
+                        if atv.device_info.output_device_id == device_id:
+                            device_names.append(atv.name)
+                            break
+                entry_name: str = ", ".join(sorted(device_names, key=str.casefold))
+                self._output_devices[entry_name] = list[str](combination)
+
     async def _poll_worker(self) -> None:
         await asyncio.sleep(2)
         while self._atv is not None:
@@ -546,7 +641,8 @@ class AppleTv:
         try:
             # TODO check if there's a nicer way to get to the CompanionAPI
             # Screensaver state is only accessible in SystemStatus
-            # There is a bug with this method, see https://github.com/postlund/pyatv/issues/2648
+            # This call will raise an exception for tvOS >= 18.4 until it is resolved (or feature removed)
+            # See https://github.com/postlund/pyatv/issues/2648
             if self._atv and isinstance(self._atv.apps.main_instance.api, CompanionAPI):
                 system_status = await self._atv.apps.main_instance.api.fetch_attention_state()
                 return system_status
@@ -561,67 +657,92 @@ class AppleTv:
     @async_handle_atvlib_errors
     async def turn_on(self) -> ucapi.StatusCodes:
         """Turn device on."""
-        try:
-            await self._atv.power.turn_on()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.power.turn_on()
 
     @async_handle_atvlib_errors
     async def turn_off(self) -> ucapi.StatusCodes:
         """Turn device off."""
-        try:
-            await self._atv.power.turn_off()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.power.turn_off()
 
     @async_handle_atvlib_errors
     async def play_pause(self) -> ucapi.StatusCodes:
         """Toggle between play and pause."""
-        try:
-            await self._atv.remote_control.play_pause()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self.stop_fast_forward_rewind()
+        await self._atv.remote_control.play_pause()
 
     @async_handle_atvlib_errors
     async def fast_forward(self) -> ucapi.StatusCodes:
         """Long press key right for fast-forward."""
-        try:
-            await self._atv.remote_control.right(InputAction.Hold)
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self.stop_fast_forward_rewind()
+        await self._atv.remote_control.right(InputAction.Hold)
 
     @async_handle_atvlib_errors
     async def rewind(self) -> ucapi.StatusCodes:
         """Long press key left for rewind."""
-        try:
+        await self.stop_fast_forward_rewind()
+        await self._atv.remote_control.left(InputAction.Hold)
+
+    @async_handle_atvlib_errors
+    async def fast_forward_companion(self) -> ucapi.StatusCodes:
+        """Fast-forward using companion protocol."""
+        companion = cast(FacadeRemoteControl, self._atv.remote_control).get(Protocol.Companion)
+        if companion:
+            if self._playback_state == PlaybackState.REWIND:
+                await self.stop_fast_forward_rewind()
+            await companion.api.mediacontrol_command(command=MediaControlCommand.FastForwardBegin)
+            self._playback_state = PlaybackState.FAST_FORWARD
+        else:
+            await self._atv.remote_control.right(InputAction.Hold)
+
+    @async_handle_atvlib_errors
+    async def rewind_companion(self) -> ucapi.StatusCodes:
+        """Rewind using companion protocol."""
+        companion = cast(FacadeRemoteControl, self._atv.remote_control).get(Protocol.Companion)
+        if companion:
+            if self._playback_state == PlaybackState.FAST_FORWARD:
+                await self.stop_fast_forward_rewind()
+            await companion.api.mediacontrol_command(command=MediaControlCommand.RewindBegin)
+            self._playback_state = PlaybackState.REWIND
+        else:
             await self._atv.remote_control.left(InputAction.Hold)
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+
+    async def fast_forward_companion_end(self):
+        """Fast-forward using companion protocol."""
+        companion = cast(FacadeRemoteControl, self._atv.remote_control).get(Protocol.Companion)
+        if companion:
+            await companion.api.mediacontrol_command(command=MediaControlCommand.FastForwardEnd)
+            self._playback_state = PlaybackState.NORMAL
+
+    async def rewind_companion_end(self):
+        """Rewind using companion protocol."""
+        companion = cast(FacadeRemoteControl, self._atv.remote_control).get(Protocol.Companion)
+        if companion:
+            await companion.api.mediacontrol_command(command=MediaControlCommand.RewindEnd)
+            self._playback_state = PlaybackState.NORMAL
+
+    async def stop_fast_forward_rewind(self) -> bool:
+        """Stop fast forward or rewind if running."""
+        if self._playback_state == PlaybackState.NORMAL:
+            return False
+        if self._playback_state == PlaybackState.FAST_FORWARD:
+            await self.fast_forward_companion_end()
+        else:
+            await self.rewind_companion_end()
+        return True
 
     @async_handle_atvlib_errors
     async def next(self) -> ucapi.StatusCodes:
         """Press key next."""
-        try:
-            if self._is_feature_available(FeatureName.Next):  # to prevent timeout errors
-                await self._atv.remote_control.next()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self.stop_fast_forward_rewind()
+        if self._is_feature_available(FeatureName.Next):  # to prevent timeout errors
+            await self._atv.remote_control.next()
 
     @async_handle_atvlib_errors
     async def previous(self) -> ucapi.StatusCodes:
         """Press key previous."""
-        try:
-            if self._is_feature_available(FeatureName.Previous):
-                await self._atv.remote_control.previous()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self.stop_fast_forward_rewind()
+        if self._is_feature_available(FeatureName.Previous):
+            await self._atv.remote_control.previous()
 
     @async_handle_atvlib_errors
     async def skip_forward(self) -> ucapi.StatusCodes:
@@ -629,12 +750,9 @@ class AppleTv:
 
         Skip interval is typically 15-30s, but is decided by the app.
         """
-        try:
-            if self._is_feature_available(FeatureName.SkipForward):
-                await self._atv.remote_control.skip_forward()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self.stop_fast_forward_rewind()
+        if self._is_feature_available(FeatureName.SkipForward):
+            await self._atv.remote_control.skip_forward()
 
     @async_handle_atvlib_errors
     async def skip_backward(self) -> ucapi.StatusCodes:
@@ -642,12 +760,9 @@ class AppleTv:
 
         Skip interval is typically 15-30s, but is decided by the app.
         """
-        try:
-            if self._is_feature_available(FeatureName.SkipBackward):
-                await self._atv.remote_control.skip_backward()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self.stop_fast_forward_rewind()
+        if self._is_feature_available(FeatureName.SkipBackward):
+            await self._atv.remote_control.skip_backward()
 
     @async_handle_atvlib_errors
     async def set_repeat(self, mode: str) -> ucapi.StatusCodes:
@@ -661,150 +776,86 @@ class AppleTv:
                 repeat = RepeatState.Track
             case _:
                 return ucapi.StatusCodes.BAD_REQUEST
-        try:
-            if self._is_feature_available(FeatureName.Repeat):
-                await self._atv.remote_control.set_repeat(repeat)
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        if self._is_feature_available(FeatureName.Repeat):
+            await self._atv.remote_control.set_repeat(repeat)
 
     @async_handle_atvlib_errors
     async def set_shuffle(self, mode: bool) -> ucapi.StatusCodes:
         """Change shuffle mode to on or off."""
-        try:
-            if self._is_feature_available(FeatureName.Shuffle):
-                await self._atv.remote_control.set_shuffle(ShuffleState.Albums if mode else ShuffleState.Off)
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        if self._is_feature_available(FeatureName.Shuffle):
+            await self._atv.remote_control.set_shuffle(ShuffleState.Albums if mode else ShuffleState.Off)
 
     @async_handle_atvlib_errors
     async def volume_up(self) -> ucapi.StatusCodes:
         """Press key volume up."""
-        try:
-            await self._atv.audio.volume_up()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.audio.volume_up()
 
     @async_handle_atvlib_errors
     async def volume_down(self) -> ucapi.StatusCodes:
         """Press key volume down."""
-        try:
-            await self._atv.audio.volume_down()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.audio.volume_down()
 
     @async_handle_atvlib_errors
     async def cursor_up(self) -> ucapi.StatusCodes:
         """Press key up."""
-        try:
-            await self._atv.remote_control.up()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.up()
 
     @async_handle_atvlib_errors
     async def cursor_down(self) -> ucapi.StatusCodes:
         """Press key down."""
-        try:
-            await self._atv.remote_control.down()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.down()
 
     @async_handle_atvlib_errors
     async def cursor_left(self) -> ucapi.StatusCodes:
         """Press key left."""
-        try:
-            await self._atv.remote_control.left()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.left()
 
     @async_handle_atvlib_errors
     async def cursor_right(self) -> ucapi.StatusCodes:
         """Press key right."""
-        try:
-            await self._atv.remote_control.right()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.right()
 
     @async_handle_atvlib_errors
     async def cursor_select(self) -> ucapi.StatusCodes:
         """Press key select."""
-        try:
-            await self._atv.remote_control.select()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.select()
 
     @async_handle_atvlib_errors
     async def context_menu(self) -> ucapi.StatusCodes:
         """Press and hold select key for one second to bring up context menu in most apps."""
-        try:
-            await self._atv.remote_control.select(InputAction.Hold)
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.select(InputAction.Hold)
 
     @async_handle_atvlib_errors
     async def home(self) -> ucapi.StatusCodes:
         """Press key home."""
-        try:
-            await self._atv.remote_control.home()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.home()
 
     @async_handle_atvlib_errors
     async def control_center(self) -> ucapi.StatusCodes:
         """Show control center: press and hold home key for one second."""
-        try:
-            await self._atv.remote_control.home(InputAction.Hold)
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.home(InputAction.Hold)
 
     @async_handle_atvlib_errors
     async def menu(self) -> ucapi.StatusCodes:
         """Press key menu."""
-        try:
-            await self._atv.remote_control.menu()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.menu()
 
     @async_handle_atvlib_errors
     async def top_menu(self) -> ucapi.StatusCodes:
         """Go to top menu: press and hold menu key for one second."""
-        try:
-            await self._atv.remote_control.menu(InputAction.Hold)
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        await self._atv.remote_control.menu(InputAction.Hold)
 
     @async_handle_atvlib_errors
     async def channel_up(self) -> ucapi.StatusCodes:
         """Select next channel."""
-        try:
-            if self._is_feature_available(FeatureName.ChannelUp):
-                await self._atv.remote_control.channel_up()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        if self._is_feature_available(FeatureName.ChannelUp):
+            await self._atv.remote_control.channel_up()
 
     @async_handle_atvlib_errors
     async def channel_down(self) -> ucapi.StatusCodes:
         """Select previous channel."""
-        try:
-            if self._is_feature_available(FeatureName.ChannelDown):
-                await self._atv.remote_control.channel_down()
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        if self._is_feature_available(FeatureName.ChannelDown):
+            await self._atv.remote_control.channel_down()
 
     @async_handle_atvlib_errors
     async def screensaver(self) -> ucapi.StatusCodes:
@@ -816,22 +867,72 @@ class AppleTv:
             # workaround: command succeeds and screensaver is started, but always returns
             # ProtocolError: Command _hidC failed
             pass
-        return ucapi.StatusCodes.OK
 
     @async_handle_atvlib_errors
     async def launch_app(self, app_name: str) -> ucapi.StatusCodes:
         """Launch an app based on bundle ID or URL."""
         try:
+            # Launch app by name
             await self._atv.apps.launch_app(self._app_list[app_name])
-            return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        except KeyError:
+            # If app_name is not an app name handle it as app deep link url
+            try:
+                await self._atv.apps.launch_app(app_name)
+            except pyatv.exceptions.NotSupportedError:
+                _LOG.warning("[%s] Launch app is not supported", self.log_id)
+            except pyatv.exceptions.ProtocolError:
+                _LOG.warning("[%s] Launch app: protocol error", self.log_id)
 
     @async_handle_atvlib_errors
     async def app_switcher(self) -> ucapi.StatusCodes:
         """Press the TV/Control Center button two times to open the App Switcher."""
-        try:
-            await self._atv.remote_control.home(InputAction.DoubleTap)
+        await self._atv.remote_control.home(InputAction.DoubleTap)
+
+    @async_handle_atvlib_errors
+    async def set_output_device(self, device_name: str) -> ucapi.StatusCodes:
+        """Set output device selection."""
+        if device_name is None:
+            return ucapi.StatusCodes.BAD_REQUEST
+        device_entry = self._output_devices.get(device_name, [])
+        if device_entry is None:
+            _LOG.warning(
+                "Output device not found in the list %s (list : %s)", device_name, self.output_devices_combinations
+            )
+            return ucapi.StatusCodes.BAD_REQUEST
+        output_devices = self._atv.audio.output_devices
+        if len(device_entry) == 0 and len(output_devices) == 0:
             return ucapi.StatusCodes.OK
-        except Exception:
-            return ucapi.StatusCodes.SERVER_ERROR
+        device_ids = []
+        for device in output_devices:
+            device_ids.append(device.identifier)
+
+        _LOG.debug("Removing output devices %s", device_ids)
+        await self._atv.audio.remove_output_devices(*device_ids)
+        if len(device_entry) == 0:
+            return ucapi.StatusCodes.OK
+
+        # Add current AppleTV device to the list unless it is already there
+        new_output_devices = device_entry
+        found_current_device = [
+            device_id for device_id in new_output_devices if device_id == self._atv.device_info.output_device_id
+        ]
+        if len(found_current_device) == 0:
+            new_output_devices.append(self._atv.device_info.output_device_id)
+
+        _LOG.debug("Setting output devices %s", new_output_devices)
+        await self._atv.audio.set_output_devices(*new_output_devices)
+
+    @async_handle_atvlib_errors
+    async def set_media_position(self, media_position: int) -> ucapi.StatusCodes:
+        """Set media position."""
+        await self._atv.remote_control.set_position(media_position)
+
+    @async_handle_atvlib_errors
+    # pylint: disable=too-many-positional-arguments
+    async def swipe(self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int) -> ucapi.StatusCodes:
+        """Generate a swipe gesture."""
+        touch_facade: FacadeTouchGestures = cast(FacadeTouchGestures, self._atv.touch)
+        if touch_facade.get(Protocol.Companion):
+            await cast(FacadeTouchGestures, self._atv.touch).swipe(start_x, start_y, end_x, end_y, duration_ms)
+        else:
+            raise pyatv.exceptions.CommandError("Touch gestures not supported")
