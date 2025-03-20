@@ -298,23 +298,19 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
             found_selected_device_id = ""
             for discovered_atv in discovered_atvs:
                 # List of detected AppleTVs : exclude already configured ones except the one the user selected
-                if (
-                    selected_device.identifier != discovered_atv.identifier
-                    and selected_device.mac_address != discovered_atv.identifier
-                    and config.devices.contains(discovered_atv.identifier)
-                ):
+                if (selected_device.identifier != discovered_atv.identifier
+                        and selected_device.mac_address != discovered_atv.identifier
+                        and config.devices.contains(discovered_atv.identifier)):
                     _LOG.info("Skipping device %s: already configured", discovered_atv.identifier)
                     continue
-                if discovered_atv.identifier in [selected_device.identifier, selected_device.mac_address]:
+                if (selected_device.identifier == discovered_atv.identifier
+                        or selected_device.mac_address == discovered_atv.identifier):
                     found_selected_device_id = discovered_atv.identifier
                 label = f"{discovered_atv.name} ({discovered_atv.address})"
-                dropdown_items.append(
-                    {"id": discovered_atv.identifier, "label": {"en": label + " (" + discovered_atv.identifier + ")"}}
-                )
+                dropdown_items.append({"id": discovered_atv.identifier, "label": {"en": label + " ("+discovered_atv.identifier+")"}})
 
             dropdown_items.append(
-                {"id": "", "label": {"en": "Manual mac address (below)", "fr": "Adresse Mac manuelle (ci-dessous)"}}
-            )
+                {"id": "", "label": {"en": "Manual mac address (below)", "fr": "Adresse Mac manuelle (ci-dessous)"}})
 
             _setup_step = SetupSteps.RECONFIGURE
             _reconfigured_device = selected_device
@@ -322,10 +318,8 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
             address = selected_device.address if selected_device.address else ""
 
             return RequestUserInput(
-                {
-                    "en": "Configure your Apple TV (configured mac address " + mac_address + ")",
-                    "fr": "Configurez votre Apple TV (addresse mac configurée " + mac_address + ")",
-                },
+                {"en": "Configure your Apple TV (configured mac address "+mac_address+")",
+                 "fr": "Configurez votre Apple TV (addresse mac configurée "+mac_address+")"},
                 [
                     {
                         "field": {"dropdown": {"value": found_selected_device_id, "items": dropdown_items}},
@@ -334,7 +328,7 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
                             "en": "Mac address",
                             "de": "Mac-Adresse",
                             "fr": "Adresse Mac",
-                        },
+                        }
                     },
                     {
                         "field": {"text": {"value": mac_address}},
@@ -342,7 +336,7 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
                         "label": {
                             "en": "Manual mac address",
                             "fr": "Adresse Mac manuelle",
-                        },
+                        }
                     },
                     {
                         "field": {"text": {"value": address}},
@@ -350,9 +344,9 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
                         "label": {
                             "en": "IP address (optional)",
                             "fr": "Adresse IP (optionnelle)",
-                        },
-                    },
-                ],
+                        }
+                    }
+                ]
             )
 
         case "reset":
@@ -471,7 +465,7 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Set
             identifier=choice,
             name=atv.name,
             credentials=[],
-            address=atv.address if _manual_address else None,
+            address=str(atv.address) if _manual_address else None,
             mac_address=choice,
         ),
         loop=asyncio.get_event_loop(),
