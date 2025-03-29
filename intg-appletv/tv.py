@@ -264,7 +264,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         if self._atv:
             self._atv.close()
             self._atv = None
-        self.events.emit(EVENTS.DISCONNECTED, self._device.identifier)
+        # self.events.emit(EVENTS.DISCONNECTED, self._device.identifier)
         self._start_connect_loop()
 
     def volume_update(self, _old_level: float, new_level: float) -> None:
@@ -452,7 +452,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
                 self._atv.close()
             if self._connect_task:
                 self._connect_task.cancel()
-            self.events.emit(EVENTS.DISCONNECTED, self._device.identifier)
+            # self.events.emit(EVENTS.DISCONNECTED, self._device.identifier)
         except Exception as err:  # pylint: disable=broad-exception-caught
             _LOG.exception("[%s] An error occurred while disconnecting: %s", self.log_id, err)
         finally:
