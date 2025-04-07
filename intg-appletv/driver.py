@@ -883,6 +883,7 @@ async def media_player_cmd_handler(
 
     # Only proceed if device connection is established
     if device.is_on is False:
+        _LOG.warning("Device is not reachable: %s", entity.id)
         return ucapi.StatusCodes.SERVICE_UNAVAILABLE
 
     res = ucapi.StatusCodes.BAD_REQUEST
