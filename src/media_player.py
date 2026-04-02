@@ -9,19 +9,24 @@ import asyncio
 import logging
 from enum import StrEnum
 from typing import Any
+from urllib.parse import quote_plus
 
-from ucapi import MediaPlayer, StatusCodes, media_player
+import aiohttp
+from ucapi import MediaPlayer, StatusCodes, media_player, Pagination
 from ucapi.media_player import (
     Attributes,
     Commands,
     DeviceClasses,
     Features,
     Options,
+    BrowseOptions,
+    BrowseResults,
+    BrowseMediaItem,
 )
 
 import tv
 from config import AppleTVEntity, AtvDevice
-from const import filter_attributes
+from const import filter_attributes, BROWINS_APP_ID
 from hid import UsagePage
 from hid.consumer_control_code import ConsumerControlCode
 
@@ -111,6 +116,11 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             features.append(Features.REPEAT)
         if ENABLE_SHUFFLE_FEAT:
             features.append(Features.SHUFFLE)
+
+        if config_device.media_browsing:
+            features.append(Features.BROWSE_MEDIA)
+            features.append(Features.SEARCH_MEDIA)
+            features.append(Features.PLAY_MEDIA)
 
         attributes = filter_attributes(device.attributes, Attributes)
         options = {Options.SIMPLE_COMMANDS: list(SimpleCommands)}
@@ -253,6 +263,8 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 res = await self._device.launch_app(params["source"])
             case Commands.GUIDE:
                 res = await self._device.toggle_guide()
+            case Commands.PLAY_MEDIA:
+                res = await self.play_media(params)
             # --- simple commands ---
             case SimpleCommands.TOP_MENU:
                 res = await self._device.top_menu()
@@ -287,3 +299,86 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 res = await self._device.pause()
 
         return res
+
+    async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
+        """
+        Execute entity browsing request.
+
+        Returns NOT_IMPLEMENTED if no handler is installed.
+
+        :param options: browsing parameters
+        :return: browsing response or status code if any error occurs
+        """
+        try:
+            page = 1
+            limit = 12
+            if options.paging and options.paging.page:
+                page = options.paging.page
+            if options.paging and options.paging.limit:
+                limit = options.paging.limit
+            arguments: list[str] = []
+            if options.media_id:
+                arguments.append(f"media_id={quote_plus(options.media_id)}")
+            if options.media_type:
+                arguments.append(f"media_type={quote_plus(options.media_type)}")
+            arguments.append(f"start={page-1}")
+            arguments.append(f"limit={limit}")
+            parameters = "&".join(arguments)
+
+            pagination = Pagination(page=page, limit=limit)
+            url = f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}/music/browse?{parameters}"
+            _LOG.debug("Browse media %s (%s)", options, url)
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        _LOG.debug(f"Browse results %s", data)
+                        results = BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
+                        return results
+                except aiohttp.ClientConnectorError:
+                    res = await self._device.launch_app(BROWINS_APP_ID)
+                    if res != StatusCodes.OK:
+                        _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
+                    await asyncio.sleep(2)
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        _LOG.debug(f"Browse results (2) %s", data)
+                        results = BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
+                        return results
+        except Exception as e:
+            _LOG.error("Error while browsing media", e)
+        return StatusCodes.BAD_REQUEST
+
+    async def play_media(self, params: dict[str, Any]):
+        """Play given media id."""
+        try:
+            media_id = quote_plus(params.get("media_id", ""))
+            media_type = quote_plus(params.get("media_type", ""))
+            # action = params.get("action", "PLAY_NOW")
+            # enqueue = action != "PLAY_NOW"
+            url = (
+                f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
+                f"/music/play?media_id={media_id}&media_type={media_type}"
+            )
+            _LOG.debug("Play media : %s (%s)", params, url)
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        await response.json()
+                        return StatusCodes.OK
+                except aiohttp.ClientConnectorError:
+
+                    res = await self._device.launch_app(BROWINS_APP_ID)
+                    if res != StatusCodes.OK:
+                        _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
+                    await asyncio.sleep(2)
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        await response.json()
+                        return StatusCodes.OK
+        except Exception as e:
+            _LOG.error("Error while browsing media", e)
+        return StatusCodes.BAD_REQUEST

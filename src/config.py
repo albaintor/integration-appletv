@@ -57,6 +57,10 @@ class AtvDevice:
     """Actual identifier of the device, which can change over time."""
     global_volume: bool | None = field(default=True)
     """Change volume on all connected devices."""
+    media_browsing: bool | None = field(default=False)
+    """Enable media browsing : requires a community app installed on AppleTV."""
+    media_browsing_port: int = field(default=8000)
+    """Media browsing port listening on AppleTV."""
 
     def __post_init__(self):
         """Apply default values on missing fields."""

@@ -8,6 +8,8 @@ Configuration handling of the integration driver.
 from enum import Enum
 from typing import Any, Type
 
+BROWINS_APP_ID = "albaintor.UC-Remote.tv"
+
 
 def filter_attributes(attributes, attribute_type: Type[Enum]) -> dict[str, Any]:
     """Filter attributes based on an Enum class."""

@@ -339,6 +339,11 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         return ", ".join(sorted(device_names, key=str.casefold))
 
     @property
+    def device_address(self) -> str | None:
+        """Return the device address."""
+        return str(self._apple_tv_conf.address) if self._apple_tv_conf else None
+
+    @property
     def attributes(self) -> dict[str, Any]:
         """Return device attributes."""
         app_name = ""
