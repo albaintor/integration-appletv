@@ -11,12 +11,14 @@ import json
 import logging
 import os
 from asyncio import Lock
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Iterator
 
-import discover
 import pyatv
+from ucapi import Entity
+
+import discover
 
 _LOG = logging.getLogger(__name__)
 
@@ -30,6 +32,15 @@ class AtvProtocol(str, Enum):
     COMPANION = "companion"
 
 
+class AppleTVEntity(Entity):
+    """Global AppleTV entity."""
+
+    @property
+    def deviceid(self) -> str:
+        """Return the device identifier."""
+        raise NotImplementedError()
+
+
 @dataclass
 class AtvDevice:
     """Apple TV device configuration."""
@@ -40,12 +51,28 @@ class AtvDevice:
     """Friendly name of the device."""
     credentials: list[dict[str, str]]
     """Credentials for different protocols."""
-    address: str | None = None
+    address: str | None = field(default=None)
     """Optional IP address of device. Disables IP discovery by identifier."""
-    mac_address: str | None = None
+    mac_address: str | None = field(default=None)
     """Actual identifier of the device, which can change over time."""
-    global_volume: bool | None = True
+    global_volume: bool | None = field(default=True)
     """Change volume on all connected devices."""
+    media_browsing: bool | None = field(default=False)
+    """Enable media browsing : requires a community app installed on AppleTV."""
+    media_browsing_port: int = field(default=8000)
+    """Media browsing port listening on AppleTV."""
+    media_search_catalog: bool = field(default=True)
+    """Search media in user catalog (default) or user library."""
+
+    def __post_init__(self):
+        """Apply default values on missing fields."""
+        for attribute in fields(self):
+            # If there is a default and the value of the field is none we can assign a value
+            if (
+                not isinstance(attribute.default, dataclasses.MISSING.__class__)
+                and getattr(self, attribute.name) is None
+            ):
+                setattr(self, attribute.name, attribute.default)
 
 
 class _EnhancedJSONEncoder(json.JSONEncoder):
@@ -115,10 +142,8 @@ class Devices:
         """Update a configured Apple TV device and persist configuration."""
         for item in self._config:
             if item.identifier == atv.identifier:
-                item.address = atv.address
-                item.name = atv.name
-                item.address = atv.address
-                item.global_volume = atv.global_volume if atv.global_volume else True
+                for f in fields(atv):
+                    setattr(item, f.name, getattr(atv, f.name))
                 return self.store()
         return False
 
@@ -168,19 +193,12 @@ class Devices:
         :return: True if the configuration could be loaded.
         """
         try:
+            _LOG.debug("Load config file: %s", self._cfg_file_path)
             with open(self._cfg_file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             for item in data:
-                # not using AtvDevice(**item) to be able to migrate old configuration files with missing attributes
-                atv = AtvDevice(
-                    item.get("identifier"),
-                    item.get("name", ""),
-                    item.get("credentials"),
-                    item.get("address"),
-                    item.get("mac_address"),
-                    item.get("global_volume", True),
-                )
-                self._config.append(atv)
+                # Handle default values in case the model has evolved
+                self._config.append(AtvDevice(**item))
             return True
         except OSError as err:
             _LOG.error("Cannot open the config file: %s", err)

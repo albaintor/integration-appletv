@@ -11,12 +11,7 @@ import os
 import socket
 from enum import IntEnum
 
-import config
-import discover
 import pyatv
-import tv
-from config import AtvDevice, AtvProtocol
-from i18n import __, _a, _af, _am
 from ucapi import (
     AbortDriverSetup,
     DriverSetupRequest,
@@ -29,6 +24,12 @@ from ucapi import (
     SetupError,
     UserDataResponse,
 )
+
+import config
+import discover
+import tv
+from config import AtvDevice, AtvProtocol
+from i18n import __, _a, _af, _am
 
 _LOG = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class SetupSteps(IntEnum):
     RECONFIGURE = 6
 
 
+# pylint: disable=C0103
 _setup_step = SetupSteps.INIT
 _cfg_add_device: bool = False
 _manual_address: bool = False
@@ -314,6 +316,9 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
                         "label": _a("IP address (optional)"),
                     },
                     __global_volume(True),
+                    __media_browsing(False),
+                    __media_browsing_port(),
+                    __media_search_catalog(True),
                 ],
             )
 
@@ -391,6 +396,9 @@ async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupEr
                 "label": _a("Choose your Apple TV"),
             },
             __global_volume(True),
+            __media_browsing(False),
+            __media_browsing_port(),
+            __media_search_catalog(True),
         ],
     )
 
@@ -409,6 +417,13 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
 
     choice = msg.input_values["choice"]
     global_volume = msg.input_values.get("global_volume", "true") == "true"
+    media_browsing = msg.input_values.get("media_browsing", "false") == "true"
+    media_browsing_port = 8000
+    try:
+        media_browsing_port = int(msg.input_values.get("media_browsing_port", "8000"))
+    except ValueError:
+        pass
+    media_search_catalog = msg.input_values.get("media_search_catalog", "true") == "true"
 
     atv = _discovered_atv_from_identifier(choice)
     if atv is None:
@@ -433,6 +448,9 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
             address=str(atv.address) if _manual_address else None,
             mac_address=choice,
             global_volume=global_volume,
+            media_browsing=media_browsing,
+            media_browsing_port=media_browsing_port,
+            media_search_catalog=media_search_catalog,
         ),
         loop=asyncio.get_event_loop(),
         pairing_atv=atv,
@@ -553,6 +571,9 @@ async def _handle_user_data_companion_pin(msg: UserDataResponse) -> SetupComplet
         address=_pairing_apple_tv.address,
         mac_address=_pairing_apple_tv.identifier,
         global_volume=_pairing_apple_tv.device_config.global_volume,
+        media_browsing=_pairing_apple_tv.device_config.media_browsing,
+        media_browsing_port=_pairing_apple_tv.device_config.media_browsing_port,
+        media_search_catalog=_pairing_apple_tv.device_config.media_search_catalog,
     )
     config.devices.add_or_update(device)  # triggers ATV instance creation
 
@@ -583,6 +604,13 @@ async def _handle_device_reconfigure(msg: UserDataResponse) -> SetupComplete | S
     mac_address = msg.input_values["mac_address"]
     manual_mac_address = msg.input_values["manual_mac_address"]
     global_volume = msg.input_values.get("global_volume", "true") == "true"
+    media_browsing = msg.input_values.get("media_browsing", "false") == "true"
+    media_browsing_port = 8000
+    try:
+        media_browsing_port = int(msg.input_values.get("media_browsing_port", "8000"))
+    except ValueError:
+        pass
+    media_search_catalog = msg.input_values.get("media_search_catalog", "true") == "true"
 
     if mac_address == "" and manual_mac_address == "":
         _LOG.error("MAC address is mandatory, no changes applied")
@@ -597,6 +625,9 @@ async def _handle_device_reconfigure(msg: UserDataResponse) -> SetupComplete | S
     _reconfigured_device.mac_address = mac_address
     _reconfigured_device.address = address
     _reconfigured_device.global_volume = global_volume
+    _reconfigured_device.media_browsing = media_browsing
+    _reconfigured_device.media_browsing_port = media_browsing_port
+    _reconfigured_device.media_search_catalog = media_search_catalog
 
     config.devices.add_or_update(_reconfigured_device)  # triggers ATV instance update
 
@@ -657,5 +688,29 @@ def __global_volume(enabled: bool):
     return {
         "id": "global_volume",
         "label": _a("Change volume on all connected devices"),
+        "field": {"checkbox": {"value": enabled}},
+    }
+
+
+def __media_browsing(enabled: bool):
+    return {
+        "id": "media_browsing",
+        "label": _a("Enable media browsing (experimental & requires a community app on Apple TV"),
+        "field": {"checkbox": {"value": enabled}},
+    }
+
+
+def __media_browsing_port(value: int = 8000):
+    return {
+        "field": {"number": {"max": 9999, "min": 0, "value": value}},
+        "id": "media_browsing_port",
+        "label": _a("Apple TV listening port for Media Browsing"),
+    }
+
+
+def __media_search_catalog(enabled: bool = True):
+    return {
+        "id": "media_search_catalog",
+        "label": _a("Search media in catalog, else in user library"),
         "field": {"checkbox": {"value": enabled}},
     }

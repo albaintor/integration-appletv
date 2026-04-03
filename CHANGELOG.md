@@ -11,6 +11,34 @@ _Changes in the next release_
 
 ---
 
+## v0.20.3 - 2026-02-21
+### Changed
+- Sort the available apps by name by @henrikwidlund ([#101](https://github.com/unfoldedcircle/integration-appletv/pull/101)).
+- Removed patched functions for disconnection and global volume by @albaintor ([#97](https://github.com/unfoldedcircle/integration-appletv/pull/97)).
+- Update Docker build image ([#102](https://github.com/unfoldedcircle/integration-appletv/pull/102)).
+- Update ucapi to 0.5.2 ([#98](https://github.com/unfoldedcircle/integration-appletv/pull/98)).
+- Update pyatv to 0.17.0 ([#95](https://github.com/unfoldedcircle/integration-appletv/pull/95)).
+- Update pyee to 13.0.1  ([#100](https://github.com/unfoldedcircle/integration-appletv/pull/100)).
+
+## v0.20.2 - 2026-01-15
+### Changed
+- Adapt journald log levels until the Remote supports native debug levels ([#94](https://github.com/unfoldedcircle/integration-appletv/pull/94)).
+
+## v0.20.1 - 2025-12-24
+### Changed
+- Use journald log levels if running as a systemd service ([#89](https://github.com/unfoldedcircle/integration-appletv/pull/89)).
+
+## v0.20.0 - 2025-12-23
+### Changed
+- Added connection retry when network is not ready. Contributed by @albaintor, thanks! ([#80](https://github.com/unfoldedcircle/integration-appletv/pull/80)).
+- Update ucapi to 0.5.1 ([#88](https://github.com/unfoldedcircle/integration-appletv/pull/88)).
+
+## v0.19.3 - 2025-11-27
+### Fixed
+- Artwork not being updated ([#79](https://github.com/unfoldedcircle/integration-appletv/pull/79)).
+### Changed
+- If a client disconnects, the connections to the ATV devices are no longer closed ([#78](https://github.com/unfoldedcircle/integration-appletv/pull/78)).
+
 ## v0.19.2 - 2025-11-21
 ### Fixed
 - Missing state information and state info not clearing in some cases. Contributed by @henrikwidlund, thanks! ([#66](https://github.com/unfoldedcircle/integration-appletv/pull/66)).
