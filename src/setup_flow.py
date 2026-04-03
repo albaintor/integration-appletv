@@ -93,7 +93,7 @@ def setup_data_schema():
     }
 
 
-async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disable=too-many-return-statements
+async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disable=too-many-return-statements,R0912
     """
     Dispatch driver setup requests to corresponding handlers.
 
@@ -434,7 +434,8 @@ async def _handle_backup_restore_step() -> RequestUserInput:
     return RequestUserInput(
         {
             "en": "Backup or restore devices configuration (all existing devices will be removed)",
-            "fr": "Sauvegarder ou restaurer la configuration des appareils (tous les appareils existants seront supprimés)",
+            "fr": "Sauvegarder ou restaurer la configuration des appareils (tous les appareils "
+            "existants seront supprimés)",
         },
         [
             {
