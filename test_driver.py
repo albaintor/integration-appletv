@@ -103,9 +103,16 @@ def get_local_ip() -> str:
     return ip
 
 
+def get_locale(data: dict[str, str], locale="en") -> str | None:
+    for language in data:
+        if language == locale or language.startswith(locale):
+            return data[language]
+    return None
+
+
 def get_entity_name(entity: dict[str, Any]) -> str:
     entity_id = entity.get("entity_id")
-    name = entity["name"].get("en", None)
+    name = get_locale(entity["name"])
     if name:
         return f"{name} {entity_id}"
     return entity_id
@@ -1353,7 +1360,7 @@ class RemoteInterface(tk.Tk):
                 selected_entry = [
                     x
                     for x in entry.get("field", {}).get("dropdown", {}).get("items", [])
-                    if x.get("label", {}).get("en", "") == widget.get()
+                    if get_locale(x.get("label", {})) == widget.get()
                 ]
                 if len(selected_entry) == 0:
                     _LOG.error("No matching entries found in dropdown %s for selected value %s", entry, widget.get())
@@ -1391,11 +1398,11 @@ class RemoteInterface(tk.Tk):
             column = 0
             input_data = data.get("require_user_action", {}).get("input")
             if input_data is None and (confirmation := data.get("require_user_action", {}).get("confirmation")):
-                if title := confirmation.get("title", {}).get("en", None):
+                if title := get_locale(confirmation.get("title", {})):
                     label = tk.Label(self._setup_data.window, text=title, wraplength=300)
                     label.grid(row=row, column=column, columnspan=4, sticky="we")
                     row += 1
-                if message1 := confirmation.get("message1", {}).get("en", None):
+                if message1 := get_locale(confirmation.get("message1", {})):
                     label = tk.Label(self._setup_data.window, text=message1, wraplength=300)
                     label.grid(row=row, column=column, columnspan=4, sticky="we")
                     row += 1
@@ -1423,7 +1430,7 @@ class RemoteInterface(tk.Tk):
                 return
 
             if input_field := input_data.get("title"):
-                label = tk.Label(self._setup_data.window, text=input_field.get("en", ""), wraplength=300)
+                label = tk.Label(self._setup_data.window, text=get_locale(input_field), wraplength=300)
                 label.grid(row=row, column=column, columnspan=4, sticky="we")
                 row += 1
             if settings := input_data.get("settings"):
@@ -1432,19 +1439,19 @@ class RemoteInterface(tk.Tk):
                     column = 0
                     field_id = setting.get("id", "")
                     if field := setting.get("label"):
-                        label = tk.Label(self._setup_data.window, text=field.get("en", ""), wraplength=300)
+                        label = tk.Label(self._setup_data.window, text=get_locale(field), wraplength=300)
                         label.grid(row=row, column=column, columnspan=2, sticky="w")
                         column += 2
                     if field := setting.get("field"):
                         if dropdown := field.get("dropdown"):
                             combo = ttk.Combobox(self._setup_data.window, state="readonly", justify="left")
                             combo.grid(row=row, column=column, columnspan=2, sticky="we")
-                            combo["values"] = [x.get("label", {}).get("en", "") for x in dropdown.get("items", [])]
+                            combo["values"] = [get_locale(x.get("label", {})) for x in dropdown.get("items", [])]
                             current_value = [
                                 x for x in dropdown.get("items", []) if x.get("id") == dropdown.get("value", "")
                             ]
                             if len(current_value) > 0:
-                                combo.set(current_value[0].get("label", {}).get("en", ""))
+                                combo.set(get_locale(current_value[0].get("label", {})))
                             else:
                                 _LOG.warning(
                                     "No default entry found in dropdown %s for selected value %s",
@@ -1492,7 +1499,7 @@ class RemoteInterface(tk.Tk):
                             self._setup_data.mapping_type[field_id] = "checkbox"
                         elif label := field.get("label"):
                             label_field = ttk.Label(
-                                self._setup_data.window, text=label.get("value", {}).get("en", ""), wraplength=300
+                                self._setup_data.window, text=get_locale(label.get("value", {})), wraplength=300
                             )
                             label_field.grid(row=row, column=column, columnspan=4 - column, sticky="we")
                         elif text := field.get("number"):
@@ -1769,10 +1776,15 @@ class WorkerThread(threading.Thread):
                 if entity.get("entity_type", "") == "media_player":
                     media_players.append(get_entity_name(entity))
                 if entity.get("entity_type", "") == "sensor":
-                    self._sensors[entity_id] = {"name": entity["name"].get("en", entity_id), "state": ""}
+                    self._sensors[entity_id] = {
+                        "name": get_locale(entity["name"]) if get_locale(entity["name"]) else entity_id,
+                        "state": "",
+                    }
                 if entity.get("entity_type", "") == "select":
                     self._selectors[entity_id] = Selector(
-                        name=entity["name"].get("en", entity_id), current_option="", options=[]
+                        name=get_locale(entity["name"]) if get_locale(entity["name"]) else entity_id,
+                        current_option="",
+                        options=[],
                     )
 
             data = await self._ws.subscribe_entities(self._entity_ids)

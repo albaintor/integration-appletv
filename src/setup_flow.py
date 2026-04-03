@@ -38,12 +38,14 @@ class SetupSteps(IntEnum):
     """Enumeration of setup steps to keep track of user data responses."""
 
     INIT = 0
+    WORKFLOW_MODE = 1
     CONFIGURATION_MODE = 1
     DISCOVER = 2
     DEVICE_CHOICE = 3
     PAIRING_AIRPLAY = 4
     PAIRING_COMPANION = 5
     RECONFIGURE = 6
+    BACKUP_RESTORE = 7
 
 
 # pylint: disable=C0103
@@ -91,7 +93,7 @@ def setup_data_schema():
     }
 
 
-async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disable=too-many-return-statements
+async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disable=too-many-return-statements,R0912
     """
     Dispatch driver setup requests to corresponding handlers.
 
@@ -111,6 +113,13 @@ async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disa
 
     if isinstance(msg, UserDataResponse):
         _LOG.debug("%s", msg)
+        if _setup_step == SetupSteps.WORKFLOW_MODE:
+            if msg.input_values.get("configuration_mode", "") == "normal":
+                _setup_step = SetupSteps.CONFIGURATION_MODE
+                _LOG.debug("Starting normal setup workflow")
+                return __user_input_discovery()
+            _LOG.debug("User requested backup/restore of configuration")
+            return await _handle_backup_restore_step()
         if _setup_step == SetupSteps.CONFIGURATION_MODE and "action" in msg.input_values:
             return await _handle_configuration_mode(msg)
         if _setup_step == SetupSteps.DISCOVER and "address" in msg.input_values:
@@ -123,6 +132,8 @@ async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disa
             return await _handle_user_data_companion_pin(msg)
         if _setup_step == SetupSteps.RECONFIGURE:
             return await _handle_device_reconfigure(msg)
+        if _setup_step == SetupSteps.BACKUP_RESTORE:
+            return await _handle_backup_restore(msg)
         _LOG.error("No or invalid user response was received: %s", msg)
     elif isinstance(msg, AbortDriverSetup):
         _LOG.info("Setup was aborted with code: %s", msg.error)
@@ -203,6 +214,16 @@ async def _handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | Se
             # dummy entry if no devices are available
             dropdown_devices.append({"id": "", "label": {"en": "---"}})
 
+        dropdown_actions.append(
+            {
+                "id": "backup_restore",
+                "label": {
+                    "en": "Backup or restore devices configuration",
+                    "fr": "Sauvegarder ou restaurer la configuration des appareils",
+                },
+            },
+        )
+
         return RequestUserInput(
             _a("Configuration mode"),
             [
@@ -221,8 +242,8 @@ async def _handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | Se
 
     # Initial setup, make sure we have a clean configuration
     config.devices.clear()  # triggers device instance removal
-    _setup_step = SetupSteps.DISCOVER
-    return __user_input_discovery()
+    _setup_step = SetupSteps.WORKFLOW_MODE
+    return __workflow_mode()
 
 
 async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput | SetupComplete | SetupError:
@@ -399,6 +420,36 @@ async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupEr
             __media_browsing(False),
             __media_browsing_port(),
             __media_search_catalog(True),
+        ],
+    )
+
+
+async def _handle_backup_restore_step() -> RequestUserInput:
+    global _setup_step
+    _setup_step = SetupSteps.BACKUP_RESTORE
+    current_config = config.devices.export()
+
+    _LOG.debug("Handle backup/restore step")
+
+    return RequestUserInput(
+        {
+            "en": "Backup or restore devices configuration (all existing devices will be removed)",
+            "fr": "Sauvegarder ou restaurer la configuration des appareils (tous les appareils "
+            "existants seront supprimés)",
+        },
+        [
+            {
+                "field": {
+                    "textarea": {
+                        "value": current_config,
+                    }
+                },
+                "id": "config",
+                "label": {
+                    "en": "Devices configuration",
+                    "fr": "Configuration des appareils",
+                },
+            },
         ],
     )
 
@@ -642,6 +693,30 @@ async def _handle_device_reconfigure(msg: UserDataResponse) -> SetupComplete | S
     return SetupComplete()
 
 
+async def _handle_backup_restore(msg: UserDataResponse) -> SetupComplete | SetupError:
+    """
+    Process import of configuration
+
+    :param msg: response data from the requested user data
+    :return: the setup action on how to continue: SetupComplete after updating configuration
+    """
+    # flake8: noqa:F824
+    # pylint: disable=W0602
+    _LOG.debug("Handle backup/restore")
+    updated_config = msg.input_values["config"]
+    _LOG.info("Replacing configuration with : %s", updated_config)
+    res = config.devices.import_config(updated_config)
+    if res == config.ConfigImportResult.ERROR:
+        _LOG.error("Setup error, unable to import updated configuration : %s", updated_config)
+        return SetupError(error_type=IntegrationSetupError.OTHER)
+    if res == config.ConfigImportResult.WARNINGS:
+        _LOG.error("Setup warning, configuration imported with warnings : %s", config.devices)
+    _LOG.debug("Configuration imported successfully")
+
+    await asyncio.sleep(1)
+    return SetupComplete()
+
+
 def _discovered_atv_from_identifier(identifier: str) -> pyatv.interface.BaseConfig | None:
     """
     Get discovery information from identifier.
@@ -655,6 +730,42 @@ def _discovered_atv_from_identifier(identifier: str) -> pyatv.interface.BaseConf
         if atv.identifier == identifier:
             return atv
     return None
+
+
+def __workflow_mode():
+    return RequestUserInput(
+        {"en": "Configuration mode", "de": "Konfigurations-Modus"},
+        [
+            {
+                "field": {
+                    "dropdown": {
+                        "value": "normal",
+                        "items": [
+                            {
+                                "id": "normal",
+                                "label": {
+                                    "en": "Start the configuration of the integration",
+                                    "fr": "Démarrer la configuration de l'intégration",
+                                },
+                            },
+                            {
+                                "id": "backup_restore",
+                                "label": {
+                                    "en": "Backup or restore devices configuration",
+                                    "fr": "Sauvegarder ou restaurer la configuration des appareils",
+                                },
+                            },
+                        ],
+                    }
+                },
+                "id": "configuration_mode",
+                "label": {
+                    "en": "Configuration mode",
+                    "fr": "Mode de configuration",
+                },
+            }
+        ],
+    )
 
 
 def __user_input_discovery():
