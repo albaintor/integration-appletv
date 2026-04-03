@@ -5,7 +5,9 @@
 	"name": { "en": "Apple TV" },
 	"icon": "uc:integration",
 	"description": {
-		"_comment": "set at runtime"
+		"en": "Control your Apple TV instances with Remote Two/3.",
+		"de": "Steuere Apple TV instances mit Remote Two/3.",
+		"fr": "Contrôler vos instances Apple TV avec Remote Two/3."
 	},
 	"developer": {
 		"name": "Unfolded Circle ApS",
@@ -13,8 +15,23 @@
 		"url": "https://support.unfoldedcircle.com/hc/en-us/articles/19479576638620"
 	},
 	"home_page": "https://www.unfoldedcircle.com",
-	"setup_data_schema": {
-		"_comment": "set at runtime"
-	},
+	"settings": [
+      {
+        "id": "info",
+        "label": {
+          "en": "Setup process",
+          "de": "Setup Fortschritt",
+          "fr": "Avancement de la configuration"
+        },
+        "field": {
+          "label": {
+            "value": {
+              "en": "The integration will let you configure your Apple TV instances on your network.",
+              "fr": "Cette intégration permet de configurer vos instances Apple TV dans le réseau."
+            }
+          }
+        }
+      }
+    ],
 	"release_date": "2026-04-03"
 }
