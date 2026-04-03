@@ -142,7 +142,7 @@ MAIN_WS_MAX_MSG_SIZE = 8 * 1024 * 1024  # 8Mb
 WS_TIMEOUT = 5
 BROWSING_PAGINATION = 12
 BROWSING_CELL_WIDTH = 60
-DUMP_MAX_LENGTH = 64
+DUMP_MAX_LENGTH = 100
 
 
 class RemoteWebsocket:
@@ -1116,7 +1116,12 @@ class RemoteInterface(tk.Tk):
             self._media_search_data.page = pagination.get("page", 1)
             self._media_search_data.limit = pagination.get("limit", BROWSING_PAGINATION)
             self._media_search_data.count = pagination.get("count", 0)
-            self.update_browsing_grid(self._media_search_data, "Search Media")
+            if self._media_search_data.count is None:
+                self._media_search_data.count = 0
+            try:
+                self.update_browsing_grid(self._media_search_data, "Search Media")
+            except Exception as e:
+                _LOG.exception("Error while updating search media grid: %s", e)
 
     def browse(self, event: Any, item: dict[str, Any], browsing_data: BrowsingData):
         if not item.get("can_browse", False):

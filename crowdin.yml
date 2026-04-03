@@ -1,5 +1,5 @@
 commit_message: "fix: New %language% translations from Crowdin [ci skip]"
 append_commit_message: false
 files:
-  - source: /intg-appletv/locales/en_US/**/*.po
-    translation: /intg-appletv/locales/%locale_with_underscore%/**/%original_file_name%
+  - source: /src/locales/en_US/**/*.po
+    translation: /src/locales/%locale_with_underscore%/**/%original_file_name%

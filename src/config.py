@@ -61,6 +61,8 @@ class AtvDevice:
     """Enable media browsing : requires a community app installed on AppleTV."""
     media_browsing_port: int = field(default=8000)
     """Media browsing port listening on AppleTV."""
+    media_search_catalog: bool = field(default=True)
+    """Search media in user catalog (default) or user library."""
 
     def __post_init__(self):
         """Apply default values on missing fields."""
