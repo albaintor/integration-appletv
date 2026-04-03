@@ -8,9 +8,27 @@ The driver discovers Apple TV devices on the network and pairs them using AirPla
 A [media player entity](https://github.com/unfoldedcircle/core-api/blob/main/doc/entities/entity_media_player.md)
 is exposed to the Remote Two/3.
 
-‼️ Do not install this integration as a custom integration on the Remote, or it can interfere with the included version.  
+~~‼️ Do not install this integration as a custom integration on the Remote, or it can interfere with the included version.  
 Included integrations in the firmware cannot be updated manually. The integration can be run as an external integration
-for testing and development.
+for testing and development.~~
+
+This is a modified version of the official Apple TV integration.
+The driver has been renamed to `appletv2` in order not to interfere with the internal driver.
+This version adds the following features :
+- Media Browsing
+- Search media
+- Play media
+- Backup/restore configuration (for easier updates)
+
+To use these new features, one must install `U Remote Control` app on your Apple TV.
+Also the integration must be configured in the setup flow as following :
+- Enable media browsing
+- Check the configured port to match the port in the Apple TV app settings
+- Search media : by default, the search is performed in the catalog. You can change this setting to search only in the user library.
+- On AppleTV side : the app has to be launched at least once and navigate into music section to get access to the music library.
+
+**! Note : this is an experimental feature, use it at your own risks !**
+
 
 Supported versions:
 - Apple TV 4 and newer models with tvOS 16+
@@ -41,6 +59,7 @@ Supported commands:
 - App switcher
 - Start screensaver
 - Stream audio to one or multiple output devices
+- Play media
 
 Please note:
 - Certain commands like channel up & down are app dependant and don't work with every app!
