@@ -1,21 +1,29 @@
 {
-	"driver_id": "appletv2",
-	"version": "0.21.0",
-	"min_core_api": "0.7.1",
-	"name": { "en": "Apple TV" },
-	"icon": "uc:integration",
-	"description": {
-		"en": "Control your Apple TV instances with Remote Two/3.",
-		"de": "Steuere Apple TV instances mit Remote Two/3.",
-		"fr": "Contrôler vos instances Apple TV avec Remote Two/3."
-	},
-	"developer": {
-		"name": "Unfolded Circle ApS",
-		"email": "hello@unfoldedcircle.com",
-		"url": "https://support.unfoldedcircle.com/hc/en-us/articles/19479576638620"
-	},
-	"home_page": "https://www.unfoldedcircle.com",
-	"settings": [
+  "driver_id": "appletv2",
+  "version": "0.21.0",
+  "min_core_api": "0.7.1",
+  "name": {
+    "en": "Apple TV"
+  },
+  "icon": "uc:integration",
+  "description": {
+    "en": "Control your Apple TV instances with Remote Two/3.",
+    "de": "Steuere Apple TV instances mit Remote Two/3.",
+    "fr": "Contrôler vos instances Apple TV avec Remote Two/3."
+  },
+  "developer": {
+    "name": "Unfolded Circle ApS",
+    "email": "hello@unfoldedcircle.com",
+    "url": "https://support.unfoldedcircle.com/hc/en-us/articles/19479576638620"
+  },
+  "home_page": "https://www.unfoldedcircle.com",
+  "setup_data_schema": {
+    "title": {
+      "en": "Integration setup",
+      "de": "Integrations setup",
+      "fr": "Configuration de l'intégration"
+    },
+    "settings": [
       {
         "id": "info",
         "label": {
@@ -32,6 +40,7 @@
           }
         }
       }
-    ],
-	"release_date": "2026-04-03"
+    ]
+  },
+  "release_date": "2026-04-03"
 }
