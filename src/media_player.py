@@ -321,7 +321,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 arguments.append(f"media_id={quote_plus(options.media_id)}")
             if options.media_type:
                 arguments.append(f"media_type={quote_plus(options.media_type)}")
-            arguments.append(f"start={page-1}")
+            arguments.append(f"start={(page-1)*limit}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
             # TODO unknown pagination is not handled yet by the remote yet
@@ -382,7 +382,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 arguments.append("mode=1")  # Search catalog
             else:
                 arguments.append("mode=0")  # Search user library
-            arguments.append(f"start={page-1}")
+            arguments.append(f"start={(page-1)*limit}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
 
