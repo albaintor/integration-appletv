@@ -120,7 +120,15 @@ async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disa
                 return __user_input_discovery()
             _LOG.debug("User requested backup/restore of configuration")
             return await _handle_backup_restore_step()
-        if _setup_step == SetupSteps.CONFIGURATION_MODE and "action" in msg.input_values:
+        if _setup_step == SetupSteps.CONFIGURATION_MODE:
+            if "action" in msg.input_values:
+                _LOG.debug("Setup flow starts with existing configuration")
+                return await _handle_configuration_mode(msg)
+            if not _manual_address:
+                _LOG.debug("Setup flow in discovery mode")
+                _setup_step = SetupSteps.DISCOVER
+                return await _handle_discovery(msg)
+            _LOG.debug("Setup flow configuration mode")
             return await _handle_configuration_mode(msg)
         if _setup_step == SetupSteps.DISCOVER and "address" in msg.input_values:
             return await _handle_discovery(msg)
