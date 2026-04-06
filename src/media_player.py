@@ -370,7 +370,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 page = options.paging.page
             if options.paging and options.paging.limit:
                 limit = options.paging.limit
-            # TODO unknown pagination is not handled yet by the remote yet
+            # TODO unknown pagination seems not to be handled by the remote yet
             pagination = Pagination(page=page, limit=limit, count=1000)
             arguments: list[str] = []
             if len(options.query) < 3:
@@ -381,6 +381,10 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             if options.media_type:
                 arguments.append(f"media_type={quote_plus(options.media_type)}")
             if self._device.device_config.media_search_catalog:
+                mode = 1  # Search music catalog (default)
+            else:
+                mode = 0  # Search user library
+            if self._device.device_config.media_search_catalog:
                 arguments.append("mode=1")  # Search catalog
             else:
                 arguments.append("mode=0")  # Search user library
@@ -390,8 +394,12 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 if artist := search_filter.artist:
                     arguments.append(f"artist={artist}")
                 if media_classes := search_filter.media_classes:
-                    media_classes = ",".join(media_classes)
-                    arguments.append(f"media_classes={media_classes}")
+                    search_media_classes = ",".join(media_classes)
+                    arguments.append(f"media_classes={search_media_classes}")
+                    # Hack to trigger searching in user library : search_media_class should contain `directory`
+                    if "directory" in media_classes:
+                        mode = 0
+            arguments.append(f"mode={mode}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
 
