@@ -384,10 +384,6 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 mode = 1  # Search music catalog (default)
             else:
                 mode = 0  # Search user library
-            if self._device.device_config.media_search_catalog:
-                arguments.append("mode=1")  # Search catalog
-            else:
-                arguments.append("mode=0")  # Search user library
             if search_filter := options.filter:
                 if album := search_filter.album:
                     arguments.append(f"album={album}")

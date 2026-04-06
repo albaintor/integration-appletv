@@ -344,15 +344,17 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
                         "id": "address",
                         "label": _a("IP address (optional)"),
                     },
-                    __global_volume(True),
-                    __media_browsing(False),
-                    __media_browsing_port(),
-                    __media_search_catalog(True),
+                    __global_volume(_reconfigured_device.global_volume),
+                    __media_browsing(_reconfigured_device.media_browsing),
+                    __media_browsing_port(_reconfigured_device.media_browsing_port),
+                    __media_search_catalog(_reconfigured_device.media_search_catalog),
                 ],
             )
 
         case "reset":
             config.devices.clear()  # triggers device instance removal
+        case "backup_restore":
+            return await _handle_backup_restore_step()
         case _:
             _LOG.error("Invalid configuration action: %s", action)
             return SetupError(error_type=IntegrationSetupError.OTHER)
