@@ -60,7 +60,7 @@ from pyatv.protocols.mrp import (
 from pyee.asyncio import AsyncIOEventEmitter
 from ucapi import StatusCodes
 from ucapi.media_player import Attributes as MediaAttr
-from ucapi.media_player import MediaContentType, RepeatMode
+from ucapi.media_player import MediaClass, MediaContentType, RepeatMode
 from ucapi.media_player import States as MediaState
 
 from config import AtvDevice, AtvProtocol
@@ -370,6 +370,13 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             MediaAttr.SOUND_MODE: self.output_devices,
             MediaAttr.SHUFFLE: self._shuffle,
             MediaAttr.REPEAT: self._repeat,
+            MediaAttr.SEARCH_MEDIA_CLASSES: [
+                MediaClass.MUSIC,
+                MediaClass.ALBUM,
+                MediaClass.ARTIST,
+                MediaClass.PLAYLIST,
+                MediaClass.TRACK,
+            ],
             # TODO when UC library udpated
             # MediaAttr.MEDIA_ID : self._media_id,
         }

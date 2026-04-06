@@ -123,6 +123,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             features.append(Features.BROWSE_MEDIA)
             features.append(Features.SEARCH_MEDIA)
             features.append(Features.PLAY_MEDIA)
+            features.append(Features.SEARCH_MEDIA_CLASSES)
 
         attributes = filter_attributes(device.attributes, Attributes)
         options = {Options.SIMPLE_COMMANDS: list(SimpleCommands)}
@@ -361,6 +362,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
         :param options: search parameters
         :return: search response or status code if any error occurs
         """
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         try:
             page = 1
             limit = 12
@@ -382,7 +384,14 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 arguments.append("mode=1")  # Search catalog
             else:
                 arguments.append("mode=0")  # Search user library
-            arguments.append(f"start={(page-1)*limit}")
+            if search_filter := options.filter:
+                if album := search_filter.album:
+                    arguments.append(f"album={album}")
+                if artist := search_filter.artist:
+                    arguments.append(f"artist={artist}")
+                if media_classes := search_filter.media_classes:
+                    media_classes = ",".join(media_classes)
+                    arguments.append(f"media_classes={media_classes}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
 
