@@ -371,7 +371,6 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             MediaAttr.SHUFFLE: self._shuffle,
             MediaAttr.REPEAT: self._repeat,
             MediaAttr.SEARCH_MEDIA_CLASSES: [
-                MediaClass.MUSIC,
                 MediaClass.ALBUM,
                 MediaClass.ARTIST,
                 MediaClass.PLAYLIST,
