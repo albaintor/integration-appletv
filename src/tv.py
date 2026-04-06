@@ -376,6 +376,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
                 MediaClass.ARTIST,
                 MediaClass.PLAYLIST,
                 MediaClass.TRACK,
+                MediaClass.DIRECTORY,  # Used for navigating user library
             ],
             # TODO when UC library udpated
             # MediaAttr.MEDIA_ID : self._media_id,
