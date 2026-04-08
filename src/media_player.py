@@ -325,8 +325,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             arguments.append(f"start={(page-1)*limit}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
-            # TODO unknown pagination is not handled yet by the remote yet
-            pagination = Pagination(page=page, limit=limit, count=1000)
+            pagination = Pagination(page=page, limit=limit)
             url = (
                 f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
                 f"/music/browse?{parameters}"
@@ -370,8 +369,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 page = options.paging.page
             if options.paging and options.paging.limit:
                 limit = options.paging.limit
-            # TODO unknown pagination seems not to be handled by the remote yet
-            pagination = Pagination(page=page, limit=limit, count=1000)
+            pagination = Pagination(page=page, limit=limit)
             arguments: list[str] = []
             if len(options.query) < 3:
                 return SearchResults(media=[], pagination=pagination)
