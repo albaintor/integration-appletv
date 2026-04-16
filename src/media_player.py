@@ -332,6 +332,9 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 f"/music/browse?{parameters}"
             )
             _LOG.debug("Browse media %s (%s)", options, url)
+            if not self._device.is_on:
+                _LOG.debug("Browse device not connected, connect")
+                await self._device.connect()
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(url) as response:
@@ -340,7 +343,8 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                         _LOG.debug("Browse results %s", data)
                         results = BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
                         return results
-                except aiohttp.ClientConnectorError:
+                except Exception as ex:  # pylint: disable=W0718
+                    _LOG.debug("Browse app not ready, launch and retry %s", ex)
                     res = await self._device.launch_app(BROWINS_APP_ID)
                     if res != StatusCodes.OK:
                         _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
@@ -404,6 +408,9 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 f"/music/browse?{parameters}"
             )
             _LOG.debug("Search media %s (%s)", options, url)
+            if not self._device.is_on:
+                _LOG.debug("Search: device not connected, connect")
+                await self._device.connect()
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(url) as response:
@@ -414,7 +421,8 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                             media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination
                         )
                         return results
-                except aiohttp.ClientConnectorError:
+                except Exception as ex:  # pylint: disable=W0718
+                    _LOG.debug("Search app not ready, launch and retry %s", ex)
                     res = await self._device.launch_app(BROWINS_APP_ID)
                     if res != StatusCodes.OK:
                         _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
@@ -443,14 +451,17 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 f"/music/play?media_id={media_id}&media_type={media_type}"
             )
             _LOG.debug("Play media : %s (%s)", params, url)
+            if not self._device.is_on:
+                _LOG.debug("Play: device not connected, connect")
+                await self._device.connect()
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(url) as response:
                         response.raise_for_status()
                         await response.json()
                         return StatusCodes.OK
-                except aiohttp.ClientConnectorError:
-
+                except Exception as ex:  # pylint: disable=W0718
+                    _LOG.debug("Play app not ready, launch and retry %s", ex)
                     res = await self._device.launch_app(BROWINS_APP_ID)
                     if res != StatusCodes.OK:
                         _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
