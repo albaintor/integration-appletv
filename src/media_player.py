@@ -303,6 +303,37 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
 
         return res
 
+    async def app_url(self, url: str) -> Any | None:
+        """Launch app URL to Apple TV."""
+        try:
+            if not self._device.is_on:
+                _LOG.debug("[%s] Device not connected, connect", self._device.address)
+                await self._device.connect()
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        _LOG.debug("[%s] App URL results %s", self._device.address, data)
+                        return data
+                except Exception as ex:  # pylint: disable=W0718
+                    _LOG.debug("[%s] App not ready, launch and retry %s", ex)
+                    res = await self._device.launch_app(BROWINS_APP_ID)
+                    if res != StatusCodes.OK:
+                        _LOG.error(
+                            "[%s] Unable to launch browsing app. Check that it is installed on your AppleTV",
+                            self._device.address,
+                        )
+                    await asyncio.sleep(2)
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        _LOG.debug("[%s] App URL results (2) %s", self._device.address, data)
+                        return data
+        except Exception as ex:  # pylint: disable=W0718
+            _LOG.debug("[%s] App URL error %s", self._device.address, ex)
+            return None
+
     async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
         """
         Execute entity browsing request.
@@ -325,38 +356,16 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             arguments.append(f"start={(page-1)*limit}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
-            # TODO unknown pagination is not handled yet by the remote yet
-            pagination = Pagination(page=page, limit=limit, count=1000)
+            pagination = Pagination(page=page, limit=limit)
             url = (
                 f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
                 f"/music/browse?{parameters}"
             )
-            _LOG.debug("Browse media %s (%s)", options, url)
-            if not self._device.is_on:
-                _LOG.debug("Browse device not connected, connect")
-                await self._device.connect()
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        data = await response.json()
-                        _LOG.debug("Browse results %s", data)
-                        results = BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
-                        return results
-                except Exception as ex:  # pylint: disable=W0718
-                    _LOG.debug("Browse app not ready, launch and retry %s", ex)
-                    res = await self._device.launch_app(BROWINS_APP_ID)
-                    if res != StatusCodes.OK:
-                        _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
-                    await asyncio.sleep(2)
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        data = await response.json()
-                        _LOG.debug("Browse results (2) %s", data)
-                        results = BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
-                        return results
+            _LOG.debug("[%s] Browse media %s (%s)", self._device.address, options, url)
+            data = await self.app_url(url)
+            return BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
         except Exception as e:  # pylint: disable=W0718
-            _LOG.error("Error while browsing media %s", e)
+            _LOG.error("[%s] Error while browsing media %s", self._device.address, e)
         return StatusCodes.BAD_REQUEST
 
     async def search(self, options: SearchOptions) -> SearchResults | StatusCodes:
@@ -374,8 +383,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 page = options.paging.page
             if options.paging and options.paging.limit:
                 limit = options.paging.limit
-            # TODO unknown pagination seems not to be handled by the remote yet
-            pagination = Pagination(page=page, limit=limit, count=1000)
+            pagination = Pagination(page=page, limit=limit)
             arguments: list[str] = []
             if len(options.query) < 3:
                 return SearchResults(media=[], pagination=pagination)
@@ -402,39 +410,13 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             arguments.append(f"mode={mode}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
-
             url = (
                 f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
                 f"/music/browse?{parameters}"
             )
             _LOG.debug("Search media %s (%s)", options, url)
-            if not self._device.is_on:
-                _LOG.debug("Search: device not connected, connect")
-                await self._device.connect()
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        data = await response.json()
-                        _LOG.debug("Search results %s", data)
-                        results = SearchResults(
-                            media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination
-                        )
-                        return results
-                except Exception as ex:  # pylint: disable=W0718
-                    _LOG.debug("Search app not ready, launch and retry %s", ex)
-                    res = await self._device.launch_app(BROWINS_APP_ID)
-                    if res != StatusCodes.OK:
-                        _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
-                    await asyncio.sleep(2)
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        data = await response.json()
-                        _LOG.debug("Search results (2) %s", data)
-                        results = SearchResults(
-                            media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination
-                        )
-                        return results
+            data = await self.app_url(url)
+            return SearchResults(media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination)
         except Exception as e:  # pylint: disable=W0718
             _LOG.error("Error while searching media %s", e)
         return StatusCodes.BAD_REQUEST
@@ -451,25 +433,8 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 f"/music/play?media_id={media_id}&media_type={media_type}"
             )
             _LOG.debug("Play media : %s (%s)", params, url)
-            if not self._device.is_on:
-                _LOG.debug("Play: device not connected, connect")
-                await self._device.connect()
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        await response.json()
-                        return StatusCodes.OK
-                except Exception as ex:  # pylint: disable=W0718
-                    _LOG.debug("Play app not ready, launch and retry %s", ex)
-                    res = await self._device.launch_app(BROWINS_APP_ID)
-                    if res != StatusCodes.OK:
-                        _LOG.error("Unable to launch browsing app. Check that it is installed on your AppleTV.")
-                    await asyncio.sleep(2)
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        await response.json()
-                        return StatusCodes.OK
+            await self.app_url(url)
+            return StatusCodes.OK
         except Exception as e:  # pylint: disable=W0718
             _LOG.error("Error while playing media %s", e)
         return StatusCodes.BAD_REQUEST
