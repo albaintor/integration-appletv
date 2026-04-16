@@ -1,6 +1,6 @@
 {
   "driver_id": "appletv2",
-  "version": "0.21.1",
+  "version": "0.21.2",
   "min_core_api": "0.7.1",
   "name": {
     "en": "Apple TV"
@@ -42,5 +42,5 @@
       }
     ]
   },
-  "release_date": "2026-04-10"
+  "release_date": "2026-04-16"
 }
