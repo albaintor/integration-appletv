@@ -41,7 +41,7 @@ class SimpleCommands(StrEnum):
     SKIP_FORWARD = "SKIP_FORWARD"
     """Skip forward a time interval."""
     SKIP_BACKWARD = "SKIP_BACKWARD"
-    """Skip forward a time interval."""
+    """Skip backward a time interval."""
     FAST_FORWARD_BEGIN = "FAST_FORWARD_BEGIN"
     """Fast forward using Companion protocol."""
     REWIND_BEGIN = "REWIND_BEGIN"

@@ -824,7 +824,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
                             device_names.append(atv.name)
                             break
                 entry_name: str = ", ".join(sorted(device_names, key=str.casefold))
-                self._output_devices[entry_name] = list[str](combination)
+                self._output_devices[entry_name] = list(combination)
 
     async def _poll_worker(self) -> None:
         await asyncio.sleep(2)
@@ -1212,7 +1212,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         """Set output device selection."""
         if device_name is None:
             return StatusCodes.BAD_REQUEST
-        device_entry = self._output_devices.get(device_name, [])
+        device_entry = self._output_devices.get(device_name)
         if device_entry is None:
             _LOG.warning(
                 "Output device not found in the list %s (list : %s)", device_name, self.output_devices_combinations
@@ -1231,7 +1231,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             return StatusCodes.OK
 
         # Add current AppleTV device to the list unless it is already there
-        new_output_devices = device_entry
+        new_output_devices = list(device_entry)
         found_current_device = [
             device_id for device_id in new_output_devices if device_id == self._atv.device_info.output_device_id
         ]

@@ -127,7 +127,6 @@ class Devices:
             if item.identifier == atv.identifier:
                 item.address = atv.address
                 item.name = atv.name
-                item.address = atv.address
                 item.global_volume = atv.global_volume if atv.global_volume else True
                 return self.store()
         return False

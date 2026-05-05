@@ -89,6 +89,9 @@ async def on_subscribe_entities(entity_ids: list[str]) -> None:
 
     for entity_id in entity_ids:
         entity: AppleTVEntity | None = api.configured_entities.get(entity_id)
+        if entity is None:
+            _LOG.warning("Subscribed entity %s not found", entity_id)
+            continue
         device_id = entity.deviceid
         if device_id in _configured_atvs:
             device = _configured_atvs[device_id]
