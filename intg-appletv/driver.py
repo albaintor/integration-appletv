@@ -11,16 +11,18 @@ import logging
 import os
 import re
 import sys
-from enum import Enum
-from typing import Any, Type
+from typing import Any
 
 import config
 import pyatv
+import selector
+import sensor
 import setup_flow
 import tv
 import ucapi
 import ucapi.api as uc
 from config import AppleTVEntity
+from const import filter_attributes, truncate_dict
 from i18n import _a
 from media_player import AppleTVMediaPlayer
 from ucapi import Entity, media_player
@@ -100,6 +102,10 @@ async def on_subscribe_entities(entity_ids: list[str]) -> None:
                 api.configured_entities.update_attributes(
                     entity_id, filter_attributes(device.attributes, ucapi.media_player.Attributes)
                 )
+            elif isinstance(entity, selector.AppleTVSelect):
+                api.configured_entities.update_attributes(entity_id, entity.update_attributes())
+            elif isinstance(entity, sensor.AppleTVSensor):
+                api.configured_entities.update_attributes(entity_id, entity.update_attributes())
             continue
 
         device = config.devices.get(device_id)
@@ -142,6 +148,10 @@ async def on_atv_disconnected(identifier: str) -> None:
             api.configured_entities.update_attributes(
                 configured_entity.id, {ucapi.media_player.Attributes.STATE: ucapi.media_player.States.UNAVAILABLE}
             )
+        elif configured_entity.entity_type == ucapi.EntityTypes.SENSOR:
+            api.configured_entities.update_attributes(
+                configured_entity.id, {ucapi.sensor.Attributes.STATE: ucapi.sensor.States.UNAVAILABLE}
+            )
 
 
 async def on_atv_connection_error(identifier: str, message) -> None:
@@ -152,13 +162,11 @@ async def on_atv_connection_error(identifier: str, message) -> None:
             api.configured_entities.update_attributes(
                 configured_entity.id, {ucapi.media_player.Attributes.STATE: ucapi.media_player.States.UNAVAILABLE}
             )
+        elif configured_entity.entity_type == ucapi.EntityTypes.SENSOR:
+            api.configured_entities.update_attributes(
+                configured_entity.id, {ucapi.sensor.Attributes.STATE: ucapi.sensor.States.UNAVAILABLE}
+            )
     await api.set_device_state(ucapi.DeviceStates.ERROR)
-
-
-def filter_attributes(attributes: dict[str, Any], attribute_type: Type[Enum]) -> dict[str, Any]:
-    """Filter attributes based on an Enum class."""
-    valid_keys = {e.value for e in attribute_type}
-    return {k: v for k, v in attributes.items() if k in valid_keys}
 
 
 def _get_entities(device_id: str, include_all=False) -> list[Entity]:
@@ -199,17 +207,21 @@ async def on_atv_update(device_id: str, update: dict[str, Any] | None) -> None:
         device = _configured_atvs[device_id]
         update = device.attributes
     else:
-        _LOG.info("[%s] Device update: %s", device_id, update)
-    attributes = {}
+        _LOG.info("[%s] Device update: %s", device_id, truncate_dict(update))
 
     # FIXME temporary workaround until ucapi has been refactored:
     #       there's shouldn't be separate lists for available and configured entities
-    _LOG.debug("Updating attributes for device %s : %s", device_id, update)
-
     for configured_entity in _get_entities(device_id):
+        attributes = {}
         if isinstance(configured_entity, media_player.MediaPlayer):
             attributes = filter_attributes(update, ucapi.media_player.Attributes)
+        elif isinstance(configured_entity, selector.AppleTVSelect):
+            attributes = configured_entity.update_attributes(update)
+        elif isinstance(configured_entity, sensor.AppleTVSensor):
+            attributes = configured_entity.update_attributes(update)
+
         if attributes:
+            _LOG.debug("Updating attributes for entity %s : %s", configured_entity.id, truncate_dict(attributes))
             api.configured_entities.update_attributes(configured_entity.id, attributes)
 
 
@@ -257,10 +269,20 @@ def _register_available_entities(device_config: config.AtvDevice, device: tv.App
     :param name: Friendly name
     :return: True if added, False if the device was already in storage.
     """
-    entity = AppleTVMediaPlayer(config_device=device_config, device=device)
-    if api.available_entities.contains(entity.id):
-        api.available_entities.remove(entity.id)
-    return api.available_entities.add(entity)
+    entities: list[AppleTVEntity] = [
+        AppleTVMediaPlayer(device_config, device),
+        selector.AppSelect(device_config, device),
+        sensor.AppSensor(device_config, device),
+        selector.AudioOutputSelect(device_config, device),
+        sensor.AudioOutputSensor(device_config, device),
+    ]
+
+    result = False
+    for entity in entities:
+        if api.available_entities.contains(entity.id):
+            api.available_entities.remove(entity.id)
+        result = api.available_entities.add(entity)
+    return result
 
 
 def on_device_added(device: config.AtvDevice) -> None:
@@ -285,9 +307,9 @@ def on_device_removed(device: config.AtvDevice | None) -> None:
             atv = _configured_atvs.pop(device.identifier)
             _LOOP.create_task(atv.disconnect())
             atv.events.remove_all_listeners()
-            entity_id = atv.identifier
-            api.configured_entities.remove(entity_id)
-            api.available_entities.remove(entity_id)
+            for entity in _get_entities(atv.identifier):
+                api.configured_entities.remove(entity.id)
+                api.available_entities.remove(entity.id)
 
 
 class JournaldFormatter(logging.Formatter):
@@ -354,6 +376,8 @@ async def main():
     logging.getLogger("discover").setLevel(level)
     logging.getLogger("setup_flow").setLevel(level)
     logging.getLogger("media_player").setLevel(level)
+    logging.getLogger("selector").setLevel(level)
+    logging.getLogger("sensor").setLevel(level)
 
     # logging.getLogger("pyatv").setLevel(logging.DEBUG)
 
