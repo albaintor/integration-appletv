@@ -160,6 +160,7 @@ async def on_atv_disconnected(identifier: str) -> None:
         elif configured_entity.entity_type == ucapi.EntityTypes.SENSOR:
             api.configured_entities.update_attributes(
                 configured_entity.id, {ucapi.sensor.Attributes.STATE: ucapi.sensor.States.UNAVAILABLE}
+            )
         elif configured_entity.entity_type == ucapi.EntityTypes.REMOTE:
             api.configured_entities.update_attributes(
                 configured_entity.id, {ucapi_remote.Attributes.STATE: ucapi_remote.States.UNAVAILABLE}
@@ -177,6 +178,7 @@ async def on_atv_connection_error(identifier: str, message) -> None:
         elif configured_entity.entity_type == ucapi.EntityTypes.SENSOR:
             api.configured_entities.update_attributes(
                 configured_entity.id, {ucapi.sensor.Attributes.STATE: ucapi.sensor.States.UNAVAILABLE}
+            )
         elif configured_entity.entity_type == ucapi.EntityTypes.REMOTE:
             api.configured_entities.update_attributes(
                 configured_entity.id, {ucapi_remote.Attributes.STATE: ucapi_remote.States.UNAVAILABLE}
@@ -286,9 +288,10 @@ def _register_available_entities(device_config: config.AtvDevice, device: tv.App
     :param name: Friendly name
     :return: True if added, False if the device was already in storage.
     """
+    media_player_entity = AppleTVMediaPlayer(device_config, device)
     entities: list[AppleTVEntity] = [
-        AppleTVMediaPlayer(device_config, device),
-        AppleTVRemote(device_config, device, mp_entity=media_player_entity)
+        media_player_entity,
+        AppleTVRemote(device_config, device, mp_entity=media_player_entity),
         selector.AppSelect(device_config, device),
         sensor.AppSensor(device_config, device),
         selector.AudioOutputSelect(device_config, device),
@@ -327,10 +330,10 @@ def on_device_removed(device: config.AtvDevice | None) -> None:
             atv.events.remove_all_listeners()
             # TODO verify if this really works: `_get_entities` only returns the **configured** entities!
             # Previous logic:
-            #for entity_id in (
+            # for entity_id in (
             #    config.create_entity_id(atv.identifier, ucapi.EntityTypes.MEDIA_PLAYER),
             #    config.create_entity_id(atv.identifier, ucapi.EntityTypes.REMOTE),
-            #):
+            # ):
             for entity in _get_entities(atv.identifier):
                 api.configured_entities.remove(entity.id)
                 api.available_entities.remove(entity.id)
