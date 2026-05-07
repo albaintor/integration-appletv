@@ -144,7 +144,7 @@ class AppleTVSelect(AppleTVEntity, Select):
 
 
 class AppSelect(AppleTVSelect):
-    """Current audio stream selector entity."""
+    """Representation of a AppleTV selector entity."""
 
     ENTITY_NAME = "app"
     SELECT_NAME = AppleTVSelects.SELECT_APP

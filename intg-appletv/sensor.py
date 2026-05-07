@@ -93,7 +93,7 @@ class AppleTVSensor(AppleTVEntity, Sensor):
 
 
 class AppSensor(AppleTVSensor):
-    """Current audio stream sensor entity."""
+    """Current App sensor entity."""
 
     ENTITY_NAME = "app"
     SENSOR_NAME = AppleTVSensors.SENSOR_APP
