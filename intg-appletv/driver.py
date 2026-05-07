@@ -328,12 +328,6 @@ def on_device_removed(device: config.AtvDevice | None) -> None:
             atv = _configured_atvs.pop(device.identifier)
             _LOOP.create_task(atv.disconnect())
             atv.events.remove_all_listeners()
-            # TODO verify if this really works: `_get_entities` only returns the **configured** entities!
-            # Previous logic:
-            # for entity_id in (
-            #    config.create_entity_id(atv.identifier, ucapi.EntityTypes.MEDIA_PLAYER),
-            #    config.create_entity_id(atv.identifier, ucapi.EntityTypes.REMOTE),
-            # ):
             for entity in _get_entities(atv.identifier, include_all=True):
                 api.configured_entities.remove(entity.id)
                 api.available_entities.remove(entity.id)
