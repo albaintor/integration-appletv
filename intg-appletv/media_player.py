@@ -13,6 +13,7 @@ from urllib.parse import quote_plus
 
 import aiohttp
 from ucapi import MediaPlayer, Pagination, StatusCodes, media_player
+from ucapi import MediaPlayer, StatusCodes, media_player
 from ucapi.media_player import (
     Attributes,
     BrowseMediaItem,
@@ -28,7 +29,7 @@ from ucapi.media_player import (
 
 import tv
 from config import AppleTVEntity, AtvDevice
-from const import BROWINS_APP_ID, filter_attributes
+from utils import BROWINS_APP_ID, filter_attributes
 from hid import UsagePage
 from hid.consumer_control_code import ConsumerControlCode
 
@@ -50,7 +51,7 @@ class SimpleCommands(StrEnum):
     SKIP_FORWARD = "SKIP_FORWARD"
     """Skip forward a time interval."""
     SKIP_BACKWARD = "SKIP_BACKWARD"
-    """Skip forward a time interval."""
+    """Skip backward a time interval."""
     FAST_FORWARD_BEGIN = "FAST_FORWARD_BEGIN"
     """Fast forward using Companion protocol."""
     REWIND_BEGIN = "REWIND_BEGIN"
@@ -88,6 +89,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
         entity_id = config_device.identifier
         features = [
             Features.ON_OFF,
+            Features.TOGGLE,
             Features.VOLUME,
             Features.VOLUME_UP_DOWN,
             Features.MUTE_TOGGLE,
@@ -164,7 +166,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             pass
         return None
 
-    async def command(self, cmd_id: str, params: dict[str, Any] | None = None, *, websocket: Any) -> StatusCodes:
+    async def command(self, cmd_id: str, params: dict[str, Any] | None = None, *, websocket: Any = None) -> StatusCodes:
         """
         Media-player entity command handler.
 
@@ -188,7 +190,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
 
         # TODO #15 implement proper fix for correct entity OFF state (it may not remain in OFF state if connection is
         #  established) + online check if we think it is in standby mode.
-        if state == media_player.States.OFF and cmd_id != Commands.OFF:
+        if state == media_player.States.OFF and cmd_id not in (Commands.OFF, Commands.TOGGLE):
             _LOG.debug("Device is off, sending turn on command")
             # quick & dirty workaround for #15: the entity state is not always correct!
             res = await self._device.turn_on()
@@ -228,6 +230,12 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 res = await self._device.turn_on()
             case Commands.OFF:
                 res = await self._device.turn_off()
+            case Commands.TOGGLE:
+                # pylint: disable=W0212
+                if self._device.is_on:
+                    res = await self._device.turn_off()
+                else:
+                    res = await self._device.turn_on()
             case Commands.CURSOR_UP:
                 res = await self._device.cursor_up()
             case Commands.CURSOR_DOWN:

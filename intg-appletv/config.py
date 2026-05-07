@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Iterator
 
 import pyatv
-from ucapi import Entity
+from ucapi import Entity, EntityTypes
 
 import discover
 
@@ -90,6 +90,16 @@ class _EnhancedJSONEncoder(json.JSONEncoder):
         if dataclasses.is_dataclass(o):
             return dataclasses.asdict(o)
         return super().default(o)
+
+
+def create_entity_id(entity_id: str, entity_type: EntityTypes) -> str:
+    """Create a unique entity identifier for the given entity and entity type."""
+    return entity_id if entity_type == EntityTypes.MEDIA_PLAYER else f"{entity_type.value}.{entity_id}"
+
+
+def base_entity_id_from_entity_id(entity_id: str) -> str:
+    """Return the base entity id of an entity_id (strip type prefix if present)."""
+    return entity_id.split(".", 1)[1] if "." in entity_id else entity_id
 
 
 class Devices:
