@@ -12,7 +12,7 @@ from typing import Any
 
 import tv
 from config import AppleTVEntity, AtvDevice
-from const import filter_attributes
+from utils import filter_attributes
 from ucapi import MediaPlayer, StatusCodes, media_player
 from ucapi.media_player import (
     Attributes,

@@ -34,7 +34,7 @@ from typing import (
 import pyatv
 import pyatv.const
 from config import AtvDevice, AtvProtocol
-from const import AppleTVSelects, AppleTVSensors
+from utils import AppleTVSelects, AppleTVSensors
 from pyatv import interface
 from pyatv.const import (
     DeviceState,

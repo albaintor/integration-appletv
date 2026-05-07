@@ -10,7 +10,7 @@ from typing import Any
 
 import tv
 from config import AppleTVEntity, AtvDevice, create_entity_id
-from const import AppleTVSelects
+from utils import AppleTVSelects
 from ucapi import EntityTypes, Select, StatusCodes
 from ucapi.api_definitions import CommandHandler
 from ucapi.select import Attributes, Commands, States
@@ -67,10 +67,10 @@ class AppleTVSelect(AppleTVEntity, Select):
         }
 
     def update_attributes(self, update: dict[str, Any] | None = None) -> dict[str, Any] | None:
-        """Return updated selector value from full update if provided or sensor value if no udpate is provided."""
+        """Return updated selector value from full update if provided or selector value if no update is provided."""
         if update:
             if self.SELECT_NAME in update:
-                return update[self.SELECT_NAME]
+                return update[self.SELECT_NAME] | {Attributes.STATE: States.ON}
             return None
         return self.all_attributes
 

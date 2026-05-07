@@ -11,7 +11,7 @@ from typing import Any
 import tv
 import ucapi.media_player
 from config import AppleTVEntity, AtvDevice, create_entity_id
-from const import AppleTVSensors
+from utils import AppleTVSensors
 from ucapi import EntityTypes, Sensor
 from ucapi.media_player import States as MediaStates
 from ucapi.sensor import Attributes, DeviceClasses, Options, States
@@ -31,7 +31,7 @@ SENSOR_STATE_MAPPING = {
 
 # pylint: disable=R0917,R0801
 class AppleTVSensor(AppleTVEntity, Sensor):
-    """Representation of a Kodi Sensor entity."""
+    """Representation of a AppleTV Sensor entity."""
 
     ENTITY_NAME = "sensor"
     SENSOR_NAME: AppleTVSensors
@@ -61,7 +61,7 @@ class AppleTVSensor(AppleTVEntity, Sensor):
     @property
     def state(self) -> States:
         """Return sensor state."""
-        raise self._state
+        return self._state
 
     @property
     def sensor_value(self) -> str:
@@ -77,7 +77,7 @@ class AppleTVSensor(AppleTVEntity, Sensor):
         }
 
     def update_attributes(self, update: dict[str, Any] | None = None) -> dict[str, Any] | None:
-        """Return updated sensor value from full update if provided or sensor value if no udpate is provided."""
+        """Return updated sensor value from full update if provided or sensor value if no update is provided."""
         attributes: dict[str, Any] = {}
         if update:
             if ucapi.media_player.Attributes.STATE in update:

@@ -22,7 +22,7 @@ import tv
 import ucapi
 import ucapi.api as uc
 from config import AppleTVEntity
-from const import filter_attributes, truncate_dict
+from utils import filter_attributes, truncate_dict
 from i18n import _a
 from media_player import AppleTVMediaPlayer
 from ucapi import Entity, media_player
@@ -274,12 +274,12 @@ def _register_available_entities(device_config: config.AtvDevice, device: tv.App
         sensor.AudioOutputSensor(device_config, device),
     ]
 
-    result = False
+    added = False
     for entity in entities:
         if api.available_entities.contains(entity.id):
             api.available_entities.remove(entity.id)
-        result = api.available_entities.add(entity)
-    return result
+        added |= api.available_entities.add(entity)
+    return added
 
 
 def on_device_added(device: config.AtvDevice) -> None:
@@ -304,7 +304,7 @@ def on_device_removed(device: config.AtvDevice | None) -> None:
             atv = _configured_atvs.pop(device.identifier)
             _LOOP.create_task(atv.disconnect())
             atv.events.remove_all_listeners()
-            for entity in _get_entities(atv.identifier):
+            for entity in _get_entities(atv.identifier, include_all=True):
                 api.configured_entities.remove(entity.id)
                 api.available_entities.remove(entity.id)
 
