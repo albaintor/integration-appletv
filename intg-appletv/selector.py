@@ -9,13 +9,26 @@ import logging
 from typing import Any
 
 import tv
+import ucapi
 from config import AppleTVEntity, AtvDevice, create_entity_id
-from utils import AppleTVSelects
 from ucapi import EntityTypes, Select, StatusCodes
 from ucapi.api_definitions import CommandHandler
+from ucapi.media_player import States as MediaStates
 from ucapi.select import Attributes, Commands, States
+from utils import AppleTVSelects
 
 _LOG = logging.getLogger(__name__)
+
+# pylint: disable=R0801
+SELECTOR_STATE_MAPPING = {
+    MediaStates.OFF: States.ON,
+    MediaStates.ON: States.ON,
+    MediaStates.STANDBY: States.ON,
+    MediaStates.PLAYING: States.ON,
+    MediaStates.PAUSED: States.ON,
+    MediaStates.UNAVAILABLE: States.UNAVAILABLE,
+    MediaStates.UNKNOWN: States.UNKNOWN,
+}
 
 
 # pylint: disable=W1405,R0801
@@ -27,12 +40,12 @@ class AppleTVSelect(AppleTVEntity, Select):
 
     # pylint: disable=R0917
     def __init__(
-            self,
-            entity_id: str,
-            name: str | dict[str, str],
-            config_device: AtvDevice,
-            device: tv.AppleTv,
-            select_handler: CommandHandler,
+        self,
+        entity_id: str,
+        name: str | dict[str, str],
+        config_device: AtvDevice,
+        device: tv.AppleTv,
+        select_handler: CommandHandler,
     ):
         """Initialize the class."""
         # pylint: disable = R0801
@@ -69,9 +82,15 @@ class AppleTVSelect(AppleTVEntity, Select):
     def update_attributes(self, update: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """Return updated selector value from full update if provided or selector value if no update is provided."""
         if update:
+            attributes: dict[str, Any] = {}
+            if ucapi.media_player.Attributes.STATE in update:
+                new_state = SELECTOR_STATE_MAPPING.get(update[ucapi.media_player.Attributes.STATE])
+                if new_state != self._state:
+                    self._state = new_state
+                    attributes[Attributes.STATE] = self._state
             if self.SELECT_NAME in update:
-                return update[self.SELECT_NAME] | {Attributes.STATE: States.ON}
-            return None
+                attributes |= update[self.SELECT_NAME]
+            return attributes
         return self.all_attributes
 
     async def command(self, cmd_id: str, params: dict[str, Any] | None = None, *, websocket: Any) -> StatusCodes:

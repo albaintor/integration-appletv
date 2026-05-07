@@ -11,13 +11,14 @@ from typing import Any
 import tv
 import ucapi.media_player
 from config import AppleTVEntity, AtvDevice, create_entity_id
-from utils import AppleTVSensors
 from ucapi import EntityTypes, Sensor
 from ucapi.media_player import States as MediaStates
 from ucapi.sensor import Attributes, DeviceClasses, Options, States
+from utils import AppleTVSensors
 
 _LOG = logging.getLogger(__name__)
 
+# pylint: disable=R0801
 SENSOR_STATE_MAPPING = {
     MediaStates.OFF: States.ON,
     MediaStates.ON: States.ON,
@@ -37,13 +38,13 @@ class AppleTVSensor(AppleTVEntity, Sensor):
     SENSOR_NAME: AppleTVSensors
 
     def __init__(
-            self,
-            entity_id: str,
-            name: str | dict[str, str],
-            config_device: AtvDevice,
-            device: tv.AppleTv,
-            options: dict[Options, Any] | None = None,
-            device_class: DeviceClasses = DeviceClasses.CUSTOM,
+        self,
+        entity_id: str,
+        name: str | dict[str, str],
+        config_device: AtvDevice,
+        device: tv.AppleTv,
+        options: dict[Options, Any] | None = None,
+        device_class: DeviceClasses = DeviceClasses.CUSTOM,
     ):
         """Initialize the class."""
         self._device: tv.AppleTv = device

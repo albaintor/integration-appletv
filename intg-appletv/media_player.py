@@ -12,7 +12,6 @@ from typing import Any
 
 import tv
 from config import AppleTVEntity, AtvDevice
-from utils import filter_attributes
 from ucapi import MediaPlayer, StatusCodes, media_player
 from ucapi.media_player import (
     Attributes,
@@ -21,6 +20,7 @@ from ucapi.media_player import (
     Features,
     Options,
 )
+from utils import filter_attributes
 
 from hid import UsagePage
 from hid.consumer_control_code import ConsumerControlCode

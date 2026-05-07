@@ -34,7 +34,6 @@ from typing import (
 import pyatv
 import pyatv.const
 from config import AtvDevice, AtvProtocol
-from utils import AppleTVSelects, AppleTVSensors
 from pyatv import interface
 from pyatv.const import (
     DeviceState,
@@ -65,6 +64,7 @@ from ucapi.media_player import Attributes as MediaAttr
 from ucapi.media_player import MediaContentType, RepeatMode
 from ucapi.media_player import States as MediaState
 from ucapi.select import Attributes as SelectAttributes
+from utils import AppleTVSelects, AppleTVSensors
 
 _LOG = logging.getLogger(__name__)
 
@@ -342,56 +342,6 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         for device in self._atv.audio.output_devices:
             device_names.append(device.name)
         return ", ".join(sorted(device_names, key=str.casefold))
-
-    @property
-    def app_name(self) -> str:
-        """Return current app name."""
-        app_name = ""
-        if self._atv and self._atv.metadata and self._atv.metadata.app:
-            app_name = self._atv.metadata.app.name
-        return app_name
-
-    @property
-    def app_names(self) -> list[str]:
-        """Return app names."""
-        return list(self._app_list.keys())
-
-    @property
-    def attributes(self) -> dict[str, Any]:
-        """Return device attributes."""
-        return {
-            MediaAttr.STATE: self.media_state,
-            # MediaAttr.MUTED: self.is_volume_muted,
-            MediaAttr.VOLUME: self._volume_level,
-            MediaAttr.MEDIA_TYPE: self.media_content_type,
-            MediaAttr.MEDIA_IMAGE_URL: self._media_image_url if self._media_image_url else "",
-            MediaAttr.MEDIA_TITLE: self._media_title if self._media_title else "",
-            MediaAttr.MEDIA_ALBUM: self._media_album if self._media_album else "",
-            MediaAttr.MEDIA_ARTIST: self._media_artist if self._media_artist else "",
-            MediaAttr.MEDIA_POSITION: self._media_position if self._media_position else 0,
-            MediaAttr.MEDIA_DURATION: self._media_duration if self._media_duration else 0,
-            MediaAttr.MEDIA_POSITION_UPDATED_AT: (
-                self.media_position_updated_at if self.media_position_updated_at else ""
-            ),
-            MediaAttr.SOURCE_LIST: self.app_names,
-            MediaAttr.SOURCE: self.app_name,
-            MediaAttr.SOUND_MODE_LIST: self.output_devices_combinations,
-            MediaAttr.SOUND_MODE: self.output_devices,
-            MediaAttr.SHUFFLE: self._shuffle,
-            MediaAttr.REPEAT: self._repeat,
-            # TODO when UC library udpated
-            # MediaAttr.MEDIA_ID : self._media_id,
-            AppleTVSelects.SELECT_APP: {
-                SelectAttributes.CURRENT_OPTION: self.app_name,
-                SelectAttributes.OPTIONS: self.app_names,
-            },
-            AppleTVSelects.SELECT_AUDIO_OUTPUT: {
-                SelectAttributes.CURRENT_OPTION: self.output_devices,
-                SelectAttributes.OPTIONS: self.output_devices_combinations,
-            },
-            AppleTVSensors.SENSOR_APP: self.app_name,
-            AppleTVSensors.SENSOR_AUDIO_OUTPUT: self.output_devices
-        }
 
     @property
     def app_name(self) -> str:
@@ -881,7 +831,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             update[MediaAttr.SOUND_MODE_LIST] = self.output_devices_combinations
             update[AppleTVSelects.SELECT_AUDIO_OUTPUT] = {
                 SelectAttributes.CURRENT_OPTION: self.output_devices,
-                SelectAttributes.OPTIONS: self.output_devices_combinations
+                SelectAttributes.OPTIONS: self.output_devices_combinations,
             }
 
         if current_output_device != self.output_devices:

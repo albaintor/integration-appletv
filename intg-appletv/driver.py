@@ -22,12 +22,12 @@ import tv
 import ucapi
 import ucapi.api as uc
 from config import AppleTVEntity
-from utils import filter_attributes, truncate_dict
 from i18n import _a
 from media_player import AppleTVMediaPlayer
 from remote import AppleTVRemote
 from ucapi import Entity, media_player
 from ucapi import remote as ucapi_remote
+from utils import filter_attributes, truncate_dict
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 if sys.platform == "win32":
