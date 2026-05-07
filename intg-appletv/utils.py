@@ -30,5 +30,5 @@ def filter_attributes(attributes, attribute_type: Type[Enum]) -> dict[str, Any]:
 
 
 def truncate_dict(data: dict[str, Any], max_len: int = 150) -> dict[str, Any]:
-    """Returns a copy of the dictionary with truncated values to given max length for logging."""
+    """Return a copy of the dictionary with truncated values to given max length for logging."""
     return {k: (v[:max_len] + "..." if isinstance(v, str) and len(v) > max_len else v) for k, v in data.items()}
