@@ -77,7 +77,7 @@ jobs:
               python src/custom_driver.py && \
               pyinstaller --clean --onedir --name src --add-data src/locales:locales --collect-all zeroconf src/driver.py"
           echo "Clean up locales"
-          cd dist/intg-appletv/_internal/locales
+          cd dist/src/_internal/locales
           rm -Rf *.pot Makefile README.md */LC_MESSAGES/*.po
 
       - name: Add version
@@ -89,7 +89,7 @@ jobs:
       - name: Prepare artifacts
         shell: bash
         run: |
-          mv dist/intg-appletv artifacts/
+          mv dist/src artifacts/
           mv artifacts/intg-appletv artifacts/bin
           mv artifacts/bin/intg-appletv artifacts/bin/driver
           # use patched driver.json from the intg-appletv/custom_driver.py script above to not conflict with pre-installed driver
