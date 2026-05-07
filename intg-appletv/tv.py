@@ -294,6 +294,10 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         """Whether the Apple TV is on or off. Returns None if not connected."""
         if self._atv is None:
             return None
+
+        if self._atv.power.power_state == PowerState.On and self._is_on is False:
+            self._is_on = True
+
         return self._is_on
 
     @property
@@ -389,6 +393,56 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             AppleTVSensors.SENSOR_AUDIO_OUTPUT: self.output_devices
         }
 
+    @property
+    def app_name(self) -> str:
+        """Return current app name."""
+        app_name = ""
+        if self._atv and self._atv.metadata and self._atv.metadata.app:
+            app_name = self._atv.metadata.app.name
+        return app_name
+
+    @property
+    def app_names(self) -> list[str]:
+        """Return app names."""
+        return list(self._app_list.keys())
+
+    @property
+    def attributes(self) -> dict[str, Any]:
+        """Return device attributes."""
+        return {
+            MediaAttr.STATE: self.media_state,
+            # MediaAttr.MUTED: self.is_volume_muted,
+            MediaAttr.VOLUME: self._volume_level,
+            MediaAttr.MEDIA_TYPE: self.media_content_type,
+            MediaAttr.MEDIA_IMAGE_URL: self._media_image_url if self._media_image_url else "",
+            MediaAttr.MEDIA_TITLE: self._media_title if self._media_title else "",
+            MediaAttr.MEDIA_ALBUM: self._media_album if self._media_album else "",
+            MediaAttr.MEDIA_ARTIST: self._media_artist if self._media_artist else "",
+            MediaAttr.MEDIA_POSITION: self._media_position if self._media_position else 0,
+            MediaAttr.MEDIA_DURATION: self._media_duration if self._media_duration else 0,
+            MediaAttr.MEDIA_POSITION_UPDATED_AT: (
+                self.media_position_updated_at if self.media_position_updated_at else ""
+            ),
+            MediaAttr.SOURCE_LIST: self.app_names,
+            MediaAttr.SOURCE: self.app_name,
+            MediaAttr.SOUND_MODE_LIST: self.output_devices_combinations,
+            MediaAttr.SOUND_MODE: self.output_devices,
+            MediaAttr.SHUFFLE: self._shuffle,
+            MediaAttr.REPEAT: self._repeat,
+            # TODO when UC library udpated
+            # MediaAttr.MEDIA_ID : self._media_id,
+            AppleTVSelects.SELECT_APP: {
+                SelectAttributes.CURRENT_OPTION: self.app_name,
+                SelectAttributes.OPTIONS: self.app_names,
+            },
+            AppleTVSelects.SELECT_AUDIO_OUTPUT: {
+                SelectAttributes.CURRENT_OPTION: self.output_devices,
+                SelectAttributes.OPTIONS: self.output_devices_combinations,
+            },
+            AppleTVSensors.SENSOR_APP: self.app_name,
+            AppleTVSensors.SENSOR_AUDIO_OUTPUT: self.output_devices,
+        }
+
     def _backoff(self) -> float:
         if self._connection_attempts * BACKOFF_SEC >= BACKOFF_MAX:
             return BACKOFF_MAX
@@ -470,7 +524,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
     def outputdevices_update(self, old_devices: List[OutputDevice], new_devices: List[OutputDevice]) -> None:
         """Output device change callback handler, for example airplay speaker."""
         _LOG.debug("[%s] Changed output devices to %s", self.log_id, self.output_devices)
-        # self.events.emit(EVENTS.UPDATE, self._device.identifier, {MediaAttr.SOUND_MODE: self.output_devices})
+        self.events.emit(EVENTS.UPDATE, self._device.identifier, {MediaAttr.SOUND_MODE: self.output_devices})
 
     async def _find_atv(self) -> pyatv.interface.BaseConfig | None:
         """Find a specific Apple TV on the network by identifier."""
@@ -487,7 +541,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         """Add credentials for a protocol."""
         self._device.credentials.append(credentials)
 
-    def get_credentials(self) -> list[dict[str, str]]:
+    def get_credentials(self) -> list[dict[AtvProtocol, str]]:
         """Return stored credentials."""
         return self._device.credentials
 
@@ -855,7 +909,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
                             device_names.append(atv.name)
                             break
                 entry_name: str = ", ".join(sorted(device_names, key=str.casefold))
-                self._output_devices[entry_name] = list[str](combination)
+                self._output_devices[entry_name] = list(combination)
 
     async def _poll_worker(self) -> None:
         await asyncio.sleep(2)
@@ -1264,7 +1318,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             return StatusCodes.OK
 
         # Add current AppleTV device to the list unless it is already there
-        new_output_devices = device_entry
+        new_output_devices = list(device_entry)
         found_current_device = [
             device_id for device_id in new_output_devices if device_id == self._atv.device_info.output_device_id
         ]

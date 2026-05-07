@@ -11,6 +11,11 @@ _Changes in the next release_
 
 ---
 
+## v0.20.4 - 2026-02-27
+### Changed
+- Update PyInstaller build image: PyInstaller 6.20.0 and updated dependencies.
+- Update GitHub actions.
+
 ## v0.20.3 - 2026-02-21
 ### Changed
 - Sort the available apps by name by @henrikwidlund ([#101](https://github.com/unfoldedcircle/integration-appletv/pull/101)).
