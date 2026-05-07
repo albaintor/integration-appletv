@@ -75,7 +75,7 @@ jobs:
             "cd /workspace && \
               python -m pip install -r requirements.txt && \
               python src/custom_driver.py && \
-              pyinstaller --clean --onedir --name src --add-data src/locales:locales --collect-all zeroconf src/driver.py"
+              pyinstaller --clean --onedir --name intg-appletv --add-data src/locales:locales --collect-all zeroconf src/driver.py"
           echo "Clean up locales"
           cd dist/src/_internal/locales
           rm -Rf *.pot Makefile README.md */LC_MESSAGES/*.po
