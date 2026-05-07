@@ -879,7 +879,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
                 await self._analyze_updated_data(update, data)
 
                 # off state is not included in metadata, don't override it
-                if power_state is None or power_state == PowerState.Off:
+                if power_state and power_state != PowerState.Off:
                     self._state = data.device_state
             else:
                 # No playback data available, clear the artwork
