@@ -62,8 +62,10 @@ from ucapi import StatusCodes
 from ucapi.media_player import Attributes as MediaAttr
 from ucapi.media_player import MediaClass, MediaContentType, RepeatMode
 from ucapi.media_player import States as MediaState
+from ucapi.select import Attributes as SelectAttributes
 
 from config import AtvDevice, AtvProtocol
+from utils import AppleTVSelects, AppleTVSensors
 
 _LOG = logging.getLogger(__name__)
 
@@ -404,44 +406,6 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         """Return the device address."""
         return str(self._apple_tv_conf.address) if self._apple_tv_conf else None
 
-    @property
-    def attributes(self) -> dict[str, Any]:
-        """Return device attributes."""
-        app_name = ""
-        if self._atv and self._atv.metadata and self._atv.metadata.app:
-            app_name = self._atv.metadata.app.name
-
-        return {
-            MediaAttr.STATE: self.media_state,
-            # MediaAttr.MUTED: self.is_volume_muted,
-            MediaAttr.VOLUME: self._volume_level,
-            MediaAttr.MEDIA_TYPE: self.media_content_type,
-            MediaAttr.MEDIA_IMAGE_URL: self._media_image_url if self._media_image_url else "",
-            MediaAttr.MEDIA_TITLE: self._media_title if self._media_title else "",
-            MediaAttr.MEDIA_ALBUM: self._media_album if self._media_album else "",
-            MediaAttr.MEDIA_ARTIST: self._media_artist if self._media_artist else "",
-            MediaAttr.MEDIA_POSITION: self._media_position if self._media_position else 0,
-            MediaAttr.MEDIA_DURATION: self._media_duration if self._media_duration else 0,
-            MediaAttr.MEDIA_POSITION_UPDATED_AT: (
-                self.media_position_updated_at if self.media_position_updated_at else ""
-            ),
-            MediaAttr.SOURCE_LIST: list(self._app_list.keys()),
-            MediaAttr.SOURCE: app_name,
-            MediaAttr.SOUND_MODE_LIST: list(self._output_devices.keys()),
-            MediaAttr.SOUND_MODE: self.output_devices,
-            MediaAttr.SHUFFLE: self._shuffle,
-            MediaAttr.REPEAT: self._repeat,
-            MediaAttr.SEARCH_MEDIA_CLASSES: [
-                MediaClass.ALBUM,
-                MediaClass.ARTIST,
-                MediaClass.PLAYLIST,
-                MediaClass.TRACK,
-                MediaClass.DIRECTORY,  # Used for navigating user library
-            ],
-            # TODO when UC library udpated
-            # MediaAttr.MEDIA_ID : self._media_id,
-        }
-
     def _backoff(self) -> float:
         if self._connection_attempts * BACKOFF_SEC >= BACKOFF_MAX:
             return BACKOFF_MAX
@@ -540,7 +504,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         """Add credentials for a protocol."""
         self._device.credentials.append(credentials)
 
-    def get_credentials(self) -> list[dict[AtvProtocol, str]]:
+    def get_credentials(self) -> list[dict[str, str]]:
         """Return stored credentials."""
         return self._device.credentials
 

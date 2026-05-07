@@ -9,31 +9,25 @@ This module implements a Remote Two integration driver for Apple TV devices.
 import asyncio
 import logging
 import os
-import pyatv
 import re
 import sys
-from enum import Enum
-from typing import Any, Type
+from typing import Any
 
+import pyatv
 import ucapi
 import ucapi.api as uc
 from ucapi import Entity, media_player
+from ucapi import remote as ucapi_remote
 
 import config
-import pyatv
 import selector
 import sensor
 import setup_flow
 import tv
 from config import AppleTVEntity
-import ucapi
-import ucapi.api as uc
-from config import AppleTVEntity
 from i18n import _a
 from media_player import AppleTVMediaPlayer
 from remote import AppleTVRemote
-from ucapi import Entity, media_player
-from ucapi import remote as ucapi_remote
 from utils import filter_attributes, truncate_dict
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages

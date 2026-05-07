@@ -8,13 +8,14 @@ Select entity functions.
 import logging
 from typing import Any
 
-import tv
 import ucapi
-from config import AppleTVEntity, AtvDevice, create_entity_id
 from ucapi import EntityTypes, Select, StatusCodes
 from ucapi.api_definitions import CommandHandler
 from ucapi.media_player import States as MediaStates
 from ucapi.select import Attributes, Commands, States
+
+import tv
+from config import AppleTVEntity, AtvDevice, create_entity_id
 from utils import AppleTVSelects
 
 _LOG = logging.getLogger(__name__)

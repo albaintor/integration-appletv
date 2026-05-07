@@ -8,12 +8,13 @@ Sensor entity functions.
 import logging
 from typing import Any
 
-import tv
 import ucapi.media_player
-from config import AppleTVEntity, AtvDevice, create_entity_id
 from ucapi import EntityTypes, Sensor
 from ucapi.media_player import States as MediaStates
 from ucapi.sensor import Attributes, DeviceClasses, Options, States
+
+import tv
+from config import AppleTVEntity, AtvDevice, create_entity_id
 from utils import AppleTVSensors
 
 _LOG = logging.getLogger(__name__)

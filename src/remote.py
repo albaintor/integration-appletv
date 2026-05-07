@@ -8,14 +8,15 @@ Remote entity functions.
 import logging
 from typing import Any
 
-import tv
 import ucapi.remote
-from config import AppleTVEntity, AtvDevice, create_entity_id
-from media_player import AppleTVMediaPlayer, SimpleCommands
 from ucapi import EntityTypes, Remote, StatusCodes, media_player
 from ucapi.media_player import Commands as MediaPlayerCommands
 from ucapi.remote import Attributes, Commands, Features
 from ucapi.ui import Buttons
+
+import tv
+from config import AppleTVEntity, AtvDevice, create_entity_id
+from media_player import AppleTVMediaPlayer, SimpleCommands
 
 _LOG = logging.getLogger(__name__)
 

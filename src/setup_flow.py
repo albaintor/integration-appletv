@@ -254,6 +254,7 @@ async def _handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | Se
     return __workflow_mode()
 
 
+# pylint: disable=R0911
 async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput | SetupComplete | SetupError:
     """
     Process user data response from the configuration mode screen.

@@ -13,7 +13,6 @@ from urllib.parse import quote_plus
 
 import aiohttp
 from ucapi import MediaPlayer, Pagination, StatusCodes, media_player
-from ucapi import MediaPlayer, StatusCodes, media_player
 from ucapi.media_player import (
     Attributes,
     BrowseMediaItem,
@@ -29,9 +28,9 @@ from ucapi.media_player import (
 
 import tv
 from config import AppleTVEntity, AtvDevice
-from utils import BROWINS_APP_ID, filter_attributes
 from hid import UsagePage
 from hid.consumer_control_code import ConsumerControlCode
+from utils import BROWINS_APP_ID, filter_attributes
 
 _LOG = logging.getLogger(__name__)
 # Experimental features, don't seem to work / supported (yet) with ATV4
@@ -325,7 +324,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                         _LOG.debug("[%s] App URL results %s", self._device.address, data)
                         return data
                 except Exception as ex:  # pylint: disable=W0718
-                    _LOG.debug("[%s] App not ready, launch and retry %s", ex)
+                    _LOG.debug("[%s] App not ready, launch and retry %s", self._device.address, ex)
                     res = await self._device.launch_app(BROWINS_APP_ID)
                     if res != StatusCodes.OK:
                         _LOG.error(

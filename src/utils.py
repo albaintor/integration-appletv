@@ -8,6 +8,8 @@ Utility functions used for Apple TV integration.
 from enum import Enum, StrEnum
 from typing import Any, Type
 
+BROWINS_APP_ID = "albaintor.UC-Remote"
+
 
 class AppleTVSelects(StrEnum):
     """Apple TV select values."""
