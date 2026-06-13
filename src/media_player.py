@@ -6,8 +6,9 @@ Media-player entity functions.
 """
 
 import asyncio
-import logging
 from enum import StrEnum
+import logging
+from typing import Any, cast
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -33,9 +34,30 @@ from hid.consumer_control_code import ConsumerControlCode
 from utils import BROWINS_APP_ID, filter_attributes
 
 _LOG = logging.getLogger(__name__)
-# Experimental features, don't seem to work / supported (yet) with ATV4
+# Experimental features don't seem to work / supported (yet) with ATV4
 ENABLE_REPEAT_FEAT = False
 ENABLE_SHUFFLE_FEAT = False
+
+_AVAILABLE_ATTRIBUTES = [
+    Attributes.STATE,
+    Attributes.MUTED,
+    Attributes.VOLUME,
+    Attributes.MEDIA_TYPE,
+    Attributes.MEDIA_IMAGE_URL,
+    Attributes.MEDIA_TITLE,
+    Attributes.MEDIA_ALBUM,
+    Attributes.MEDIA_ARTIST,
+    Attributes.MEDIA_POSITION,
+    Attributes.MEDIA_DURATION,
+    Attributes.MEDIA_POSITION_UPDATED_AT,
+    Attributes.SOURCE_LIST,
+    Attributes.SOURCE,
+    Attributes.SOUND_MODE_LIST,
+    Attributes.SOUND_MODE,
+    Attributes.SHUFFLE,
+    Attributes.REPEAT,
+    Attributes.MEDIA_ID,
+]
 
 
 class SimpleCommands(StrEnum):
@@ -77,13 +99,19 @@ def _get_cmd_param(name: str, params: dict[str, Any] | None) -> str | bool | Non
     return params.get(name)
 
 
-class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
-    """Representation of a AppleTV Media Player entity."""
+class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
+    """Representation of an AppleTV Media Player entity."""
 
-    def __init__(self, config_device: AtvDevice, device: tv.AppleTv):
+    def __init__(
+        self,
+        config_device: AtvDevice,
+        device: AppleTv,
+        api: IntegrationAPI,
+    ):
         """Initialize the class."""
-        # pylint: disable = R0801
         self._device = device
+        self._assumed_state: States = States.OFF
+        """Fallback state if device power state is not available."""
         # entity_id = create_entity_id(config_device.name, EntityTypes.MEDIA_PLAYER)
         entity_id = config_device.identifier
         features = [
@@ -120,22 +148,23 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
         if ENABLE_SHUFFLE_FEAT:
             features.append(Features.SHUFFLE)
 
-        if config_device.media_browsing:
-            features.append(Features.BROWSE_MEDIA)
-            features.append(Features.SEARCH_MEDIA)
-            features.append(Features.PLAY_MEDIA)
-            features.append(Features.SEARCH_MEDIA_CLASSES)
-
         attributes = filter_attributes(device.attributes, Attributes)
-        options = {Options.SIMPLE_COMMANDS: list(SimpleCommands)}
-        super().__init__(
+        options: dict[str, list[Any]] = {Options.SIMPLE_COMMANDS: list(SimpleCommands)}
+        cast("Any", super()).__init__(
             entity_id, config_device.name, features, attributes, device_class=DeviceClasses.TV, options=options
         )
+        AppleTVEntity.__init__(self, entity_id, api)
 
     @property
-    def deviceid(self) -> str:
+    @override
+    def atv_id(self) -> str:
         """Return the device identifier."""
         return self._device.identifier
+
+    @override
+    def state_from_media_player_state(self, state: States) -> States:
+        """Map media-player state. Pass through state."""
+        return state
 
     async def _playpause_in_screensaver(self) -> StatusCodes | None:
         """
@@ -143,29 +172,33 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
 
         Screensaver active: play/pause button exits screensaver. If a playback was paused, resume it.
 
-        :param state: the media-player state
-        :param device: the device
         :return: None if screensaver was not active, a StatusCode otherwise
         """
         # tvOS 18.4 will raise an exception https://github.com/postlund/pyatv/issues/2648
         # Screensaver state is no longer accessible
-        # pylint: disable=W0718
         try:
-            if self._device.media_state != media_player.States.PLAYING and await self._device.screensaver_active():
+            if self._device.media_state != States.PLAYING and await self._device.screensaver_active():
                 _LOG.debug("Screensaver is running, sending menu command for play_pause to exit")
                 await self._device.menu()
-                if self._device.media_state == media_player.States.PAUSED:
+                if self._device.media_state == States.PAUSED:
                     # another awkwardness: the play_pause button doesn't work anymore after exiting the screensaver.
                     # One has to send a dpad select first to start playback. Afterward, play_pause works again...
                     await asyncio.sleep(1)  # delay required, otherwise the second button press is ignored
                     return await self._device.cursor_select()
                 # Nothing was playing, only the screensaver was active
                 return StatusCodes.OK
-        except Exception:
-            pass
+        except Exception as ex:  # noqa: BLE001 — broad catch retained for resilience
+            _LOG.debug("Screensaver state check failed: %s", ex)
         return None
 
-    async def command(self, cmd_id: str, params: dict[str, Any] | None = None, *, websocket: Any = None) -> StatusCodes:
+    @override
+    async def command(  # noqa: PLR0915
+        self,
+        cmd_id: str,
+        params: dict[str, Any] | None = None,
+        *,
+        websocket: Any = None,
+    ) -> StatusCodes:
         """
         Media-player entity command handler.
 
@@ -177,28 +210,23 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                           callbacks instead of broadcasts.
         :return: status code of the command request
         """
-        # pylint: disable=R0912,R0915
-        _LOG.info("Got %s command request: %s %s", self.id, cmd_id, params if params else "")
+        _LOG.info("Got %s command request: %s %s", self.id, cmd_id, params or "")
 
-        # If the entity is OFF (device is in standby), we turn it on regardless of the actual command
-        if self._device.is_on is None or self._device.is_on is False:
-            _LOG.debug("Device not connected, reconnect")
+        # #117: If the device is not connected, but we get a command: try to connect. Should not happen...
+        # Note: we don't check on entity state `UNAVAILABLE`:
+        # - the remote _should not_ send a command if the entity is unavailable
+        # - if something is out of sync: best effort mode. If ATV is not reachable: 503 is returned
+        if not self._device.is_enabled:
+            _LOG.warning("Received a command, but device is not active: reconnect")
             await self._device.connect()
 
+        # Automatically wake ATV from standby if a command is received
         state = self._device.media_state
-
-        # TODO #15 implement proper fix for correct entity OFF state (it may not remain in OFF state if connection is
-        #  established) + online check if we think it is in standby mode.
-        if state == media_player.States.OFF and cmd_id not in (Commands.OFF, Commands.TOGGLE):
+        if state == States.OFF and cmd_id not in (Commands.OFF, Commands.TOGGLE):
             _LOG.debug("Device is off, sending turn on command")
-            # quick & dirty workaround for #15: the entity state is not always correct!
             res = await self._device.turn_on()
             if res != StatusCodes.OK:
                 return res
-
-        # Only proceed if self._device connection is established
-        if self._device.is_on is False:
-            return StatusCodes.SERVICE_UNAVAILABLE
 
         res = StatusCodes.BAD_REQUEST
 
@@ -222,6 +250,8 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             case Commands.VOLUME_DOWN:
                 res = await self._device.volume_down()
             case Commands.VOLUME:
+                if params is None:
+                    return StatusCodes.BAD_REQUEST
                 res = await self._device.volume_set(params.get("volume"))
             case Commands.MUTE_TOGGLE:
                 res = await self._device.send_hid_key(UsagePage.CONSUMER, ConsumerControlCode.MUTE)
@@ -230,11 +260,18 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             case Commands.OFF:
                 res = await self._device.turn_off()
             case Commands.TOGGLE:
-                # pylint: disable=W0212
-                if self._device.is_on:
-                    res = await self._device.turn_off()
-                else:
+                # #117 If power state is not available use local assumed state (random pyatv bug)
+                if self._device.power_state == PowerState.Unknown:
+                    _LOG.warning(
+                        "Power state is not available for toggle, using assumed state: %s", self._assumed_state
+                    )
+                    state = self._assumed_state
+                    self._assumed_state = States.OFF if self._assumed_state == States.ON else States.ON
+
+                if state == States.OFF:
                     res = await self._device.turn_on()
+                else:
+                    res = await self._device.turn_off()
             case Commands.CURSOR_UP:
                 res = await self._device.cursor_up()
             case Commands.CURSOR_DOWN:
@@ -251,7 +288,7 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 res = await self._device.fast_forward()
             case Commands.REPEAT:
                 mode = _get_cmd_param("repeat", params)
-                res = await self._device.set_repeat(mode) if mode else StatusCodes.BAD_REQUEST
+                res = await self._device.set_repeat(mode) if isinstance(mode, str) else StatusCodes.BAD_REQUEST
             case Commands.SHUFFLE:
                 mode = _get_cmd_param("shuffle", params)
                 res = await self._device.set_shuffle(mode) if isinstance(mode, bool) else StatusCodes.BAD_REQUEST
@@ -261,8 +298,8 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 res = await self._device.control_center()
             case Commands.HOME:
                 res = await self._device.home()
-                # Request a defer update because music can play in the background
-                asyncio.create_task(self._device.deferred_state_update())
+                # Request a deferred update because music can play in the background
+                _ = asyncio.create_task(self._device.deferred_state_update())  # noqa: RUF006
             case Commands.BACK:
                 res = await self._device.menu()
             case Commands.CHANNEL_DOWN:
@@ -270,11 +307,11 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
             case Commands.CHANNEL_UP:
                 res = await self._device.channel_up()
             case Commands.SELECT_SOURCE:
+                if params is None:
+                    return StatusCodes.BAD_REQUEST
                 res = await self._device.launch_app(params["source"])
             case Commands.GUIDE:
                 res = await self._device.toggle_guide()
-            case Commands.PLAY_MEDIA:
-                res = await self.play_media(params)
             # --- simple commands ---
             case SimpleCommands.TOP_MENU:
                 res = await self._device.top_menu()
@@ -292,8 +329,10 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 res = await self._device.rewind_companion()
             case Commands.SELECT_SOUND_MODE:
                 mode = _get_cmd_param("mode", params)
-                res = await self._device.set_output_device(mode)
+                res = await self._device.set_output_device(mode) if isinstance(mode, str) else StatusCodes.BAD_REQUEST
             case Commands.SEEK:
+                if params is None:
+                    return StatusCodes.BAD_REQUEST
                 res = await self._device.set_media_position(params.get("media_position", 0))
             case SimpleCommands.SWIPE_LEFT:
                 res = await self._device.swipe(1000, 500, 50, 500, 200)
@@ -307,141 +346,46 @@ class AppleTVMediaPlayer(AppleTVEntity, MediaPlayer):
                 res = await self._device.play()
             case SimpleCommands.PAUSE:
                 res = await self._device.pause()
+            case _:
+                pass
 
         return res
 
-    async def app_url(self, url: str) -> Any | None:
-        """Launch app URL to Apple TV."""
-        try:
-            if not self._device.is_on:
-                _LOG.debug("[%s] Device not connected, connect", self._device.address)
-                await self._device.connect()
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        data = await response.json()
-                        _LOG.debug("[%s] App URL results %s", self._device.address, data)
-                        return data
-                except Exception as ex:  # pylint: disable=W0718
-                    _LOG.debug("[%s] App not ready, launch and retry %s", self._device.address, ex)
-                    res = await self._device.launch_app(BROWINS_APP_ID)
-                    if res != StatusCodes.OK:
-                        _LOG.error(
-                            "[%s] Unable to launch browsing app. Check that it is installed on your AppleTV",
-                            self._device.address,
-                        )
-                    await asyncio.sleep(2)
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        data = await response.json()
-                        _LOG.debug("[%s] App URL results (2) %s", self._device.address, data)
-                        return data
-        except Exception as ex:  # pylint: disable=W0718
-            _LOG.debug("[%s] App URL error %s", self._device.address, ex)
-            return None
-
-    async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
+    @override
+    def filter_attributes(self, update: dict[str, Any], *, force: bool = False) -> dict[str, Any]:
         """
-        Execute entity browsing request.
+        Filter the given attributes from an ATV update and return only the related media-player entity values.
 
-        :param options: browsing parameters
-        :return: browsing response or status code if any error occurs
+        **Attention:** for ``States.OFF``: all media attributes are reset.
+
+        :param update: Dictionary containing the updated properties.
+        :param force: If True, update attributes even if they haven't changed since the last update.
+        :return: Dictionary containing only the changed attributes.
         """
-        try:
-            page = 1
-            limit = 12
-            if options.paging and options.paging.page:
-                page = options.paging.page
-            if options.paging and options.paging.limit:
-                limit = options.paging.limit
-            arguments: list[str] = []
-            if options.media_id:
-                arguments.append(f"media_id={quote_plus(options.media_id)}")
-            if options.media_type:
-                arguments.append(f"media_type={quote_plus(options.media_type)}")
-            arguments.append(f"start={(page-1)*limit}")
-            arguments.append(f"limit={limit}")
-            parameters = "&".join(arguments)
-            pagination = Pagination(page=page, limit=limit)
-            url = (
-                f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
-                f"/music/browse?{parameters}"
-            )
-            _LOG.debug("[%s] Browse media %s (%s)", self._device.address, options, url)
-            data = await self.app_url(url)
-            return BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
-        except Exception as e:  # pylint: disable=W0718
-            _LOG.error("[%s] Error while browsing media %s", self._device.address, e)
-        return StatusCodes.BAD_REQUEST
+        attributes: dict[str, Any] = {}
 
-    async def search(self, options: SearchOptions) -> SearchResults | StatusCodes:
-        """
-        Execute a media search request.
+        for attr in _AVAILABLE_ATTRIBUTES:
+            if attr in update:
+                if force:
+                    attributes[attr] = update[attr]
+                else:
+                    key_update_helper(attr, update[attr], attributes, self.attributes)
 
-        :param options: search parameters
-        :return: search response or status code if any error occurs
-        """
-        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-        try:
-            page = 1
-            limit = 12
-            if options.paging and options.paging.page:
-                page = options.paging.page
-            if options.paging and options.paging.limit:
-                limit = options.paging.limit
-            pagination = Pagination(page=page, limit=limit)
-            arguments: list[str] = []
-            if len(options.query) < 3:
-                return SearchResults(media=[], pagination=pagination)
-            arguments.append(f"query={quote_plus(options.query)}")
-            if options.media_id:
-                arguments.append(f"media_id={quote_plus(options.media_id)}")
-            if options.media_type:
-                arguments.append(f"media_type={quote_plus(options.media_type)}")
-            if self._device.device_config.media_search_catalog:
-                mode = 1  # Search music catalog (default)
-            else:
-                mode = 0  # Search user library
-            if search_filter := options.filter:
-                if album := search_filter.album:
-                    arguments.append(f"album={album}")
-                if artist := search_filter.artist:
-                    arguments.append(f"artist={artist}")
-                if media_classes := search_filter.media_classes:
-                    search_media_classes = ",".join(media_classes)
-                    arguments.append(f"media_classes={search_media_classes}")
-                    # Hack to trigger searching in user library : search_media_class should contain `directory`
-                    if "directory" in media_classes:
-                        mode = 0
-            arguments.append(f"mode={mode}")
-            arguments.append(f"limit={limit}")
-            parameters = "&".join(arguments)
-            url = (
-                f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
-                f"/music/browse?{parameters}"
-            )
-            _LOG.debug("Search media %s (%s)", options, url)
-            data = await self.app_url(url)
-            return SearchResults(media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination)
-        except Exception as e:  # pylint: disable=W0718
-            _LOG.error("Error while searching media %s", e)
-        return StatusCodes.BAD_REQUEST
+        if Attributes.STATE in attributes and attributes[Attributes.STATE] == States.OFF:
+            AppleTVMediaPlayer.reset_media_data(attributes)
 
-    async def play_media(self, params: dict[str, Any]):
-        """Play given media id."""
-        try:
-            media_id = quote_plus(params.get("media_id", ""))
-            media_type = quote_plus(params.get("media_type", ""))
-            # action = params.get("action", "PLAY_NOW")
-            # enqueue = action != "PLAY_NOW"
-            url = (
-                f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
-                f"/music/play?media_id={media_id}&media_type={media_type}"
-            )
-            _LOG.debug("Play media : %s (%s)", params, url)
-            await self.app_url(url)
-            return StatusCodes.OK
-        except Exception as e:  # pylint: disable=W0718
-            _LOG.error("Error while playing media %s", e)
-        return StatusCodes.BAD_REQUEST
+        return attributes
+
+    @staticmethod
+    def reset_media_data(attributes: dict[str, Any]) -> None:
+        """Reset media metadata."""
+        attributes[Attributes.MEDIA_POSITION] = 0
+        attributes[Attributes.MEDIA_DURATION] = 0
+        attributes[Attributes.MEDIA_IMAGE_URL] = ""
+        attributes[Attributes.MEDIA_TITLE] = ""
+        attributes[Attributes.MEDIA_ARTIST] = ""
+        attributes[Attributes.MEDIA_ALBUM] = ""
+        attributes[Attributes.MEDIA_TYPE] = ""
+        attributes[Attributes.REPEAT] = RepeatMode.OFF
+        attributes[Attributes.SHUFFLE] = False
+        attributes[Attributes.SOURCE] = ""

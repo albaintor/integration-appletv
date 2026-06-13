@@ -7,11 +7,11 @@ This module implements a Remote Two integration driver for Apple TV devices.
 """
 
 import asyncio
+from collections.abc import Coroutine
 import logging
 import os
-import re
 import sys
-from typing import Any
+from typing import Any, cast
 
 import pyatv
 import ucapi
@@ -28,11 +28,24 @@ from config import AppleTVEntity
 from i18n import _a
 from media_player import AppleTVMediaPlayer
 from remote import AppleTVRemote
-from utils import filter_attributes, truncate_dict
+import pyatv.protocols.companion.api
+from typing_extensions import override
+import ucapi
+from ucapi import Entity, media_player
+import ucapi.api as uc
+
+import config
+from entities import AppleTVEntity
+import monkey_patch
+import selector
+import sensor
+import setup_flow
+import tv
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    windows_policy = cast("Any", asyncio).WindowsSelectorEventLoopPolicy()
+    asyncio.set_event_loop_policy(windows_policy)  # pyright: ignore[reportDeprecated]
 
 _LOOP = asyncio.new_event_loop()
 asyncio.set_event_loop(_LOOP)
@@ -40,6 +53,27 @@ asyncio.set_event_loop(_LOOP)
 # Global variables
 api = uc.IntegrationAPI(_LOOP)
 _configured_atvs: dict[str, tv.AppleTv] = {}
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _handle_background_task_done(task: asyncio.Task[Any]) -> None:
+    """Retrieve and log background task exceptions before discarding the task."""
+    try:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            _LOG.exception("Background task failed", exc_info=exc)
+    finally:
+        _background_tasks.discard(task)
+
+
+def _spawn_task(coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+    """Schedule a fire-and-forget coroutine and keep a strong reference until done."""
+    task = _LOOP.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_handle_background_task_done)
+    return task
 
 
 @api.listens_to(ucapi.Events.CONNECT)
@@ -53,7 +87,7 @@ async def on_r2_connect_cmd() -> None:
 
 
 @api.listens_to(ucapi.Events.DISCONNECT)
-async def on_r2_disconnect_cmd():
+async def on_r2_disconnect_cmd() -> None:
     """Disconnect all configured ATVs when the Remote Two sends the disconnect command."""
     _LOG.debug("Client disconnect command: disconnecting device(s)")
     for atv in _configured_atvs.values():
@@ -92,32 +126,26 @@ async def on_subscribe_entities(entity_ids: list[str]) -> None:
     :param entity_ids: entity identifiers.
     """
     _LOG.debug("Subscribe entities event: %s", entity_ids)
-
+    # force an entity change event with the current state for all subscribed entities
     for entity_id in entity_ids:
-        entity: AppleTVEntity | None = api.configured_entities.get(entity_id)
-        if entity is None:
-            _LOG.warning("Subscribed entity %s not found", entity_id)
+        configured_entity: Entity | None = api.configured_entities.get(entity_id)
+        if not isinstance(configured_entity, AppleTVEntity):
             continue
-        device_id = entity.deviceid
+
+        device_id = configured_entity.atv_id
         if device_id in _configured_atvs:
             device = _configured_atvs[device_id]
-            if isinstance(entity, AppleTVRemote):
-                api.configured_entities.update_attributes(
-                    entity_id, entity.filter_changed_attributes(device.attributes)
-                )
-            elif isinstance(entity, media_player.MediaPlayer):
-                api.configured_entities.update_attributes(
-                    entity_id, filter_attributes(device.attributes, ucapi.media_player.Attributes)
-                )
-            elif isinstance(entity, selector.AppleTVSelect):
-                api.configured_entities.update_attributes(entity_id, entity.update_attributes())
-            elif isinstance(entity, sensor.AppleTVSensor):
-                api.configured_entities.update_attributes(entity_id, entity.update_attributes())
+            # make sure the device is connected when subscribing to an entity
+            await device.connect()
+            # Set all current attributes in the configured entity to make sure it is up to date once the Remote sends a
+            # `get_entity_states` request. Note: `update_attributes` will also trigger an entity_change event.
+            # Better to have too many `entity_change` events than old data!
+            configured_entity.update_attributes(device.attributes, force=True)
             continue
 
-        device = config.devices.get(device_id)
+        device = config.devices.get(device_id) if config.devices is not None else None
         if device:
-            _add_configured_atv(device)
+            _add_configured_atv(device, connect=True)
         else:
             _LOG.error("Failed to subscribe entity %s: no Apple TV instance found", entity_id)
 
@@ -127,8 +155,12 @@ async def on_unsubscribe_entities(entity_ids: list[str]) -> None:
     """On unsubscribe, we disconnect the objects and remove listeners for events."""
     _LOG.debug("Unsubscribe entities event: %s", entity_ids)
     for entity_id in entity_ids:
-        entity: AppleTVEntity | None = api.configured_entities.get(entity_id)
-        device_id = entity.deviceid if entity else config.base_entity_id_from_entity_id(entity_id)
+        entity: Entity | None = api.configured_entities.get(entity_id)
+        device_id = (
+            entity.atv_id
+            if entity and isinstance(entity, AppleTVEntity)
+            else config.base_entity_id_from_entity_id(entity_id)
+        )
         # only unsubscribe the device once all its entities are gone
         if device_id in _configured_atvs and not _get_entities(device_id):
             device = _configured_atvs.pop(device_id)
@@ -137,132 +169,91 @@ async def on_unsubscribe_entities(entity_ids: list[str]) -> None:
             device.events.remove_all_listeners()
 
 
-async def on_atv_connected(identifier: str) -> None:
+async def on_atv_connected(device_id: str) -> None:
     """Handle ATV connection."""
-    _LOG.debug("Apple TV connected: %s", identifier)
-    state = media_player.States.UNKNOWN
-    if identifier in _configured_atvs:
-        await on_atv_update(identifier, None)
-        await api.set_device_state(ucapi.DeviceStates.CONNECTED)  # just to make sure the device state is set
-        return
-
-    api.configured_entities.update_attributes(identifier, {media_player.Attributes.STATE: state})
+    _LOG.debug("Apple TV connected: %s", device_id)
     await api.set_device_state(ucapi.DeviceStates.CONNECTED)  # just to make sure the device state is set
 
-
-async def on_atv_disconnected(identifier: str) -> None:
-    """Handle ATV disconnection."""
-    _LOG.debug("Apple TV disconnected: %s", identifier)
-    for configured_entity in _get_entities(identifier):
-        if configured_entity.entity_type == ucapi.EntityTypes.MEDIA_PLAYER:
-            api.configured_entities.update_attributes(
-                configured_entity.id, {ucapi.media_player.Attributes.STATE: ucapi.media_player.States.UNAVAILABLE}
-            )
-        elif configured_entity.entity_type == ucapi.EntityTypes.SENSOR:
-            api.configured_entities.update_attributes(
-                configured_entity.id, {ucapi.sensor.Attributes.STATE: ucapi.sensor.States.UNAVAILABLE}
-            )
-        elif configured_entity.entity_type == ucapi.EntityTypes.REMOTE:
-            api.configured_entities.update_attributes(
-                configured_entity.id, {ucapi_remote.Attributes.STATE: ucapi_remote.States.UNAVAILABLE}
-            )
+    if device_id in _configured_atvs:
+        atv = _configured_atvs[device_id]
+        state = atv.media_state
+        # make sure to not send an outdated state, not sure if media_state is immediately available
+        if state == media_player.States.UNAVAILABLE:
+            state = media_player.States.UNKNOWN
+        on_atv_update(device_id, {media_player.Attributes.STATE: state})
 
 
-async def on_atv_connection_error(identifier: str, message) -> None:
+def on_atv_disconnected(device_id: str) -> None:
+    """Handle ATV disconnection. Set all entities to the UNAVAILABLE state."""
+    _LOG.debug("[%s] Apple TV disconnected", device_id)
+    _mark_entities_unavailable(device_id, force=True)
+
+
+def on_atv_connection_error(device_id: str, message: Any) -> None:
     """Set entities of ATV to state UNAVAILABLE if ATV connection error occurred."""
-    _LOG.error(message)
-    for configured_entity in _get_entities(identifier):
-        if configured_entity.entity_type == ucapi.EntityTypes.MEDIA_PLAYER:
-            api.configured_entities.update_attributes(
-                configured_entity.id, {ucapi.media_player.Attributes.STATE: ucapi.media_player.States.UNAVAILABLE}
-            )
-        elif configured_entity.entity_type == ucapi.EntityTypes.SENSOR:
-            api.configured_entities.update_attributes(
-                configured_entity.id, {ucapi.sensor.Attributes.STATE: ucapi.sensor.States.UNAVAILABLE}
-            )
-        elif configured_entity.entity_type == ucapi.EntityTypes.REMOTE:
-            api.configured_entities.update_attributes(
-                configured_entity.id, {ucapi_remote.Attributes.STATE: ucapi_remote.States.UNAVAILABLE}
-            )
-    await api.set_device_state(ucapi.DeviceStates.ERROR)
+    _LOG.error("[%s] Apple TV connection error: %s", device_id, message)
+    _mark_entities_unavailable(device_id, force=False)
 
 
-def _get_entities(device_id: str, include_all=False) -> list[Entity]:
+def _mark_entities_unavailable(device_id: str, *, force: bool) -> None:
+    """Set all entities of a device to state UNAVAILABLE."""
+    for entity in _get_entities(device_id, include_all=True):
+        # The STATE attribute is common for all entities, just use the media player state :-)
+        entity.update_attributes(
+            {ucapi.media_player.Attributes.STATE: ucapi.media_player.States.UNAVAILABLE.value}, force=force
+        )
+
+
+def _get_entities(device_id: str, *, include_all: bool = False) -> list[AppleTVEntity]:
     """
     Return all associated entities of the given device.
 
-    :param device_id: the device  identifier
-    :param include_all: include both configured and available entities
-    :return: list of entities
+    :param device_id: the device identifier
+    :param include_all: includes both configured and available entities
+    :return: list of ``AppleTVEntity``
     """
-    entities = []
+    entities: list[AppleTVEntity] = []
     for entity_entry in api.configured_entities.get_all():
-        entity: AppleTVEntity | None = api.configured_entities.get(entity_entry.get("entity_id", ""))
-        if entity is None or entity.deviceid != device_id:
+        entity: Entity | None = api.configured_entities.get(entity_entry.get("entity_id", ""))
+        if not isinstance(entity, AppleTVEntity):
+            continue
+        if entity.atv_id != device_id:
             continue
         entities.append(entity)
     if not include_all:
         return entities
     for entity_entry in api.available_entities.get_all():
-        entity: AppleTVEntity | None = api.available_entities.get(entity_entry.get("entity_id", ""))
-        if entity is None or entity.deviceid != device_id:
+        entity: Entity | None = api.available_entities.get(entity_entry.get("entity_id", ""))
+        if not isinstance(entity, AppleTVEntity):
+            continue
+        if entity.atv_id != device_id:
             continue
         entities.append(entity)
     return entities
 
 
-# pylint: disable=too-many-branches,too-many-statements
-async def on_atv_update(device_id: str, update: dict[str, Any] | None) -> None:
+def on_atv_update(device_id: str, update: dict[str, Any]) -> None:
     """
-    Update attributes of configured media-player entity if ATV properties changed.
+    Update attributes of all entities if ATV properties changed.
 
     :param device_id: ATV media-player entity identifier
-    :param update: dictionary containing the updated properties or None
+    :param update: dictionary containing the updated properties.
     """
-    if update is None:
-        if device_id not in _configured_atvs:
-            return
-        device = _configured_atvs[device_id]
-        update = device.attributes
-    else:
-        _LOG.info("[%s] Device update: %s", device_id, truncate_dict(update))
-
-    # FIXME temporary workaround until ucapi has been refactored:
-    #       there's shouldn't be separate lists for available and configured entities
-    for configured_entity in _get_entities(device_id):
-        attributes = {}
-        if isinstance(configured_entity, media_player.MediaPlayer):
-            attributes = filter_attributes(update, ucapi.media_player.Attributes)
-        elif isinstance(configured_entity, selector.AppleTVSelect):
-            attributes = configured_entity.update_attributes(update)
-        elif isinstance(configured_entity, sensor.AppleTVSensor):
-            attributes = configured_entity.update_attributes(update)
-        elif isinstance(configured_entity, AppleTVRemote):
-            attributes = configured_entity.filter_changed_attributes(update)
-
-        if attributes:
-            _LOG.debug("Updating attributes for entity %s : %s", configured_entity.id, truncate_dict(attributes))
-            api.configured_entities.update_attributes(configured_entity.id, attributes)
+    for entity in _get_entities(device_id, include_all=True):
+        entity.update_attributes(update)
 
 
-def _replace_bad_chars(value: str) -> str:
-    if not value:
-        return value
-    # Replace all whitespace characters except the normal space and non-breaking space (#72).
-    return re.sub(r"[\f\n\r\t\v\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]", " ", value)
-
-
-def _add_configured_atv(device_config: config.AtvDevice, connect: bool = True) -> None:
+def _add_configured_atv(device_config: config.AtvDevice, *, connect: bool = True) -> None:
     # the device should not yet be configured, but better be safe
     if device_config.identifier in _configured_atvs:
         atv = _configured_atvs[device_config.identifier]
-        _LOOP.create_task(atv.disconnect())
+        _spawn_task(atv.disconnect())
     else:
         _LOG.debug(
             "Adding new ATV device: %s (%s) %s",
             device_config.name,
             device_config.identifier,
-            device_config.address if device_config.address else "",
+            device_config.address or "",
         )
         atv = tv.AppleTv(device_config, loop=_LOOP)
         atv.events.on(tv.EVENTS.CONNECTED, on_atv_connected)
@@ -271,12 +262,12 @@ def _add_configured_atv(device_config: config.AtvDevice, connect: bool = True) -
         atv.events.on(tv.EVENTS.UPDATE, on_atv_update)
         _configured_atvs[device_config.identifier] = atv
 
-    async def start_connection():
+    async def start_connection() -> None:
         await atv.connect()
 
     if connect:
         # start background task
-        _LOOP.create_task(start_connection())
+        _spawn_task(start_connection())
 
     _register_available_entities(device_config, atv)
 
@@ -285,18 +276,18 @@ def _register_available_entities(device_config: config.AtvDevice, device: tv.App
     """
     Add a new ATV device to the available entities.
 
-    :param identifier: ATV identifier
-    :param name: Friendly name
-    :return: True if added, False if the device was already in storage.
+    :param device_config: ATV device configuration
+    :param device: ATV device instance
+    :return: True if at least one device entity was added, False if all entities were already in storage.
     """
-    media_player_entity = AppleTVMediaPlayer(device_config, device)
-    entities: list[AppleTVEntity] = [
+    media_player_entity = AppleTVMediaPlayer(device_config, device, api)
+    entities: list[Entity] = [
         media_player_entity,
-        AppleTVRemote(device_config, device, mp_entity=media_player_entity),
-        selector.AppSelect(device_config, device),
-        sensor.AppSensor(device_config, device),
-        selector.AudioOutputSelect(device_config, device),
-        sensor.AudioOutputSensor(device_config, device),
+        AppleTVRemote(device_config, device, api, mp_entity=media_player_entity),
+        selector.AppSelect(device_config, device, api),
+        sensor.AppSensor(device_config, device, api),
+        selector.AudioOutputSelect(device_config, device, api),
+        sensor.AudioOutputSensor(device_config, device, api),
     ]
 
     added = False
@@ -310,7 +301,7 @@ def _register_available_entities(device_config: config.AtvDevice, device: tv.App
 def on_device_added(device: config.AtvDevice) -> None:
     """Handle a newly added device in the configuration."""
     _LOG.debug("New device added: %s", device)
-    _add_configured_atv(device, connect=False)
+    _add_configured_atv(device, connect=True)
 
 
 def on_device_removed(device: config.AtvDevice | None) -> None:
@@ -318,26 +309,26 @@ def on_device_removed(device: config.AtvDevice | None) -> None:
     if device is None:
         _LOG.debug("Configuration cleared, disconnecting & removing all configured ATV instances")
         for atv in _configured_atvs.values():
-            _LOOP.create_task(atv.disconnect())
+            _spawn_task(atv.disconnect())
             atv.events.remove_all_listeners()
         _configured_atvs.clear()
         api.configured_entities.clear()
         api.available_entities.clear()
-    else:
-        if device.identifier in _configured_atvs:
-            _LOG.debug("Disconnecting from removed ATV %s", device.identifier)
-            atv = _configured_atvs.pop(device.identifier)
-            _LOOP.create_task(atv.disconnect())
-            atv.events.remove_all_listeners()
-            for entity in _get_entities(atv.identifier, include_all=True):
-                api.configured_entities.remove(entity.id)
-                api.available_entities.remove(entity.id)
+    elif device.identifier in _configured_atvs:
+        _LOG.debug("Disconnecting from removed ATV %s", device.identifier)
+        atv = _configured_atvs.pop(device.identifier)
+        _spawn_task(atv.disconnect())
+        atv.events.remove_all_listeners()
+        for entity in _get_entities(atv.identifier, include_all=True):
+            api.configured_entities.remove(entity.entity_id)
+            api.available_entities.remove(entity.entity_id)
 
 
 class JournaldFormatter(logging.Formatter):
     """Formatter for journald. Prefixes messages with priority level."""
 
-    def format(self, record):
+    @override
+    def format(self, record: logging.LogRecord) -> str:
         """Format the log record with journald priority prefix."""
         # mapping of logging levels to journald priority levels
         # https://www.freedesktop.org/software/systemd/man/latest/sd-daemon.html#syslog-compatible-log-levels
@@ -353,31 +344,7 @@ class JournaldFormatter(logging.Formatter):
         return f"{priority}{record.name}: {record.getMessage()}"
 
 
-async def patched_pyatv_companion_connect(self):
-    """Patch connect method for pyatv Companion protocol."""
-    # pylint: disable=W0212
-    if self._protocol:
-        return
-    self._connection = pyatv.protocols.companion.connection.CompanionConnection(
-        self.core.loop,
-        str(self.core.config.address),
-        self.core.service.port,
-        self.core.device_listener,
-    )
-    self._protocol = pyatv.protocols.companion.protocol.CompanionProtocol(
-        self._connection, pyatv.auth.hap_srp.SRPAuthHandler(), self.core.service
-    )
-    self._protocol.listener = self
-    await self._protocol.start()
-    await self.system_info()
-    await self._touch_start()
-    await self._session_start()
-    await self._send_command("TVRCSessionStart", {"ProtocolVersionKey": "1.2"})
-    await self._text_input_start()
-    await self.subscribe_event("_iMC")
-
-
-async def main():
+async def main() -> None:
     """Start the Remote Two/3 integration driver."""
     if os.getenv("INVOCATION_ID"):
         # when running under systemd: timestamps are added by the journal
@@ -405,26 +372,29 @@ async def main():
     # logging.getLogger("pyatv").setLevel(logging.DEBUG)
 
     # TODO patch for tvOS 26.5 : to be removed when https://github.com/postlund/pyatv/issues/2845 is fixed
-    pyatv.protocols.companion.api.CompanionAPI.connect = patched_pyatv_companion_connect
+    companion_api = cast("Any", pyatv.protocols.companion.api.CompanionAPI)
+    companion_api.connect = monkey_patch.patched_pyatv_companion_connect
+    companion_api.system_info = monkey_patch.patched_pyatv_companion_system_info
 
     # load paired devices
     config.devices = config.Devices(api.config_dir_path, on_device_added, on_device_removed)
+    devices = config.get_devices()
     # best effort migration (if required): network might not be available during startup
-    await config.devices.migrate()
+    await devices.migrate()
 
     # Check for devices changes and update its mac address and ip address if necessary
-    await asyncio.create_task(config.devices.handle_devices_change())
+    await devices.handle_devices_change()
     # and register them as available devices.
     # Note: device will be moved to configured devices with the subscribe_events request!
     # This will also start the device connection.
-    for device_config in config.devices.all():
+    for device_config in devices.all():
         _add_configured_atv(device_config, connect=True)
 
     await api.init("driver.json", setup_flow.driver_setup_handler)
     # temporary hack to change driver.json language texts until supported by the wrapper lib
     # Attention: keep in sync with `custom_config.py`!
-    api._driver_info["description"] = _a("Control your Apple TV with Remote Two/3.")  # pylint: disable=W0212
-    api._driver_info["setup_data_schema"] = setup_flow.setup_data_schema()  # pylint: disable=W0212
+    api._driver_info["description"] = _a("Control your Apple TV with Remote Two/3.")  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    api._driver_info["setup_data_schema"] = setup_flow.setup_data_schema()  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
 
 
 if __name__ == "__main__":

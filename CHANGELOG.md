@@ -9,19 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Changes in the next release_
 
+---
+
+## v0.22.2 - 2026-06-05
+### Fixed
+- Handle pyatv deadlock exceptions ([#135](https://github.com/unfoldedcircle/integration-appletv/pull/135)).
+- Ensure unique pyatv client identifiers to prevent disconnections. Fixes a regression introduced in 0.22.0 with the new power state handling ([#134](https://github.com/unfoldedcircle/integration-appletv/pull/134)).
+
+### Changed
+- Switch to new linters by @henrikwidlund ([#131](https://github.com/unfoldedcircle/integration-appletv/pull/131)).
+- Pinned dependencies and cooldown for dependabot by @henrikwidlund ([#129](https://github.com/unfoldedcircle/integration-appletv/pull/129)).
+
+## v0.22.1 - 2026-05-25
+### Fixed
+- Connect Apple TV after setup ([#133](https://github.com/unfoldedcircle/integration-appletv/pull/133)).
+- Regression with credential type fixes in the last release, preventing setting up a new device ([#132](https://github.com/unfoldedcircle/integration-appletv/pull/132)).
+
+## v0.22.0 - 2026-05-22
+### Fixed
+- Power state handling with newer tvOS by @albaintor ([#127](https://github.com/unfoldedcircle/integration-appletv/pull/127)).
+- Update select- and sensor-entities if the audio output changes ([#128](https://github.com/unfoldedcircle/integration-appletv/pull/128)).
+
+### Changed
+- Reduce number of output device combinations by @henrikwidlund ([#126](https://github.com/unfoldedcircle/integration-appletv/pull/126)).
+- Simplify select- and sensor-entity updates by using media-player attribute changes ([#128](https://github.com/unfoldedcircle/integration-appletv/pull/128)).
+- Various linter and type fixes ([#130](https://github.com/unfoldedcircle/integration-appletv/pull/130)).
+
+## v0.21.1 - 2026-05-11
+### Fixed
+- Show the correct global volume setting in the setup flow ([#125](https://github.com/unfoldedcircle/integration-appletv/pull/125)).
+
+## v0.21.0 - 2026-05-11
 ### Fixed
 - Regression with tvOS 26.5 by @albaintor ([#110](https://github.com/unfoldedcircle/integration-appletv/pull/110)).
 - Create a valid driver.json file in the custom driver archive with custom driver_id and name ([#116](https://github.com/unfoldedcircle/integration-appletv/pull/116)).
+- Entity state is not updated if Apple TV device disconnects ([#93](https://github.com/unfoldedcircle/integration-appletv/issues/93)).
+- Always return the command result to the caller ([#121](https://github.com/unfoldedcircle/integration-appletv/pull/121)).
 
 ### Added
-- Add remote-entity by @albaintor ([#61](https://github.com/unfoldedcircle/integration-appletv/pull/61), [#115](https://github.com/unfoldedcircle/integration-appletv/pull/115)).
+- Add remote-entity by @henrikwidlund ([#61](https://github.com/unfoldedcircle/integration-appletv/pull/61), [#115](https://github.com/unfoldedcircle/integration-appletv/pull/115)).
+- Select- and sensor-entities for app and sound output by @albaintor ([#111](https://github.com/unfoldedcircle/integration-appletv/pull/111)).
 
 ### Changed
 - Refactored project structure for additional entity types by @albaintor ([#107](https://github.com/unfoldedcircle/integration-appletv/pull/107)).
-- Update ucapi to 0.6.0 ([#107](https://github.com/unfoldedcircle/integration-appletv/pull/107)).
 - Update pylint version ([#112](https://github.com/unfoldedcircle/integration-appletv/pull/112)).
-
----
+- State handling refactor for improved reliability and fallback if power state API is not available ([#120](https://github.com/unfoldedcircle/integration-appletv/pull/120)).
+- Refactored entity attribute update and change filter ([#122](https://github.com/unfoldedcircle/integration-appletv/pull/122)).
+- Automatically wake the Apple TV from standby when a select command is received ([#123](https://github.com/unfoldedcircle/integration-appletv/pull/123)).
+- Update ucapi to 0.7.0 ([#124](https://github.com/unfoldedcircle/integration-appletv/pull/124)).
 
 ## v0.20.4 - 2026-02-27
 ### Changed
