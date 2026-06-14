@@ -9,11 +9,18 @@ import asyncio
 from enum import StrEnum
 import logging
 from typing import Any, cast
-from typing import Any
 from urllib.parse import quote_plus
 
 import aiohttp
-from ucapi import MediaPlayer, Pagination, StatusCodes, media_player
+import tv
+from config import AtvDevice
+from entities import AppleTVEntity
+from hid import UsagePage
+from hid.consumer_control_code import ConsumerControlCode
+from pyatv.const import PowerState
+from tv import AppleTv
+from typing_extensions import override
+from ucapi import IntegrationAPI, MediaPlayer, Pagination, StatusCodes, media_player
 from ucapi.media_player import (
     Attributes,
     BrowseMediaItem,
@@ -23,15 +30,12 @@ from ucapi.media_player import (
     DeviceClasses,
     Features,
     Options,
+    RepeatMode,
     SearchOptions,
     SearchResults,
+    States,
 )
-
-import tv
-from config import AppleTVEntity, AtvDevice
-from hid import UsagePage
-from hid.consumer_control_code import ConsumerControlCode
-from utils import BROWINS_APP_ID, filter_attributes
+from utils import BROWINS_APP_ID, filter_attributes, key_update_helper
 
 _LOG = logging.getLogger(__name__)
 # Experimental features don't seem to work / supported (yet) with ATV4
@@ -147,6 +151,12 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             features.append(Features.REPEAT)
         if ENABLE_SHUFFLE_FEAT:
             features.append(Features.SHUFFLE)
+
+        if config_device.media_browsing:
+            features.append(Features.BROWSE_MEDIA)
+            features.append(Features.SEARCH_MEDIA)
+            features.append(Features.PLAY_MEDIA)
+            features.append(Features.SEARCH_MEDIA_CLASSES)
 
         attributes = filter_attributes(device.attributes, Attributes)
         options: dict[str, list[Any]] = {Options.SIMPLE_COMMANDS: list(SimpleCommands)}
@@ -312,6 +322,8 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                 res = await self._device.launch_app(params["source"])
             case Commands.GUIDE:
                 res = await self._device.toggle_guide()
+            case Commands.PLAY_MEDIA:
+                res = await self.play_media(params)
             # --- simple commands ---
             case SimpleCommands.TOP_MENU:
                 res = await self._device.top_menu()
@@ -389,3 +401,139 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
         attributes[Attributes.REPEAT] = RepeatMode.OFF
         attributes[Attributes.SHUFFLE] = False
         attributes[Attributes.SOURCE] = ""
+
+    async def app_url(self, url: str) -> Any | None:
+        """Launch app URL to Apple TV."""
+        try:
+            if not self._device.is_enabled:
+                _LOG.debug("[%s] Device not connected, connect", self._device.address)
+                await self._device.connect()
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        _LOG.debug("[%s] App URL results %s", self._device.address, data)
+                        return data
+                except Exception as ex:  # pylint: disable=W0718
+                    _LOG.debug("[%s] App not ready, launch and retry %s", self._device.address, ex)
+                    res = await self._device.launch_app(BROWINS_APP_ID)
+                    if res != StatusCodes.OK:
+                        _LOG.error(
+                            "[%s] Unable to launch browsing app. Check that it is installed on your AppleTV",
+                            self._device.address,
+                        )
+                    await asyncio.sleep(2)
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        _LOG.debug("[%s] App URL results (2) %s", self._device.address, data)
+                        return data
+        except Exception as ex:  # pylint: disable=W0718
+            _LOG.debug("[%s] App URL error %s", self._device.address, ex)
+            return None
+
+    async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
+        """
+        Execute entity browsing request.
+
+        :param options: browsing parameters
+        :return: browsing response or status code if any error occurs
+        """
+        try:
+            page = 1
+            limit = 12
+            if options.paging and options.paging.page:
+                page = options.paging.page
+            if options.paging and options.paging.limit:
+                limit = options.paging.limit
+            arguments: list[str] = []
+            if options.media_id:
+                arguments.append(f"media_id={quote_plus(options.media_id)}")
+            if options.media_type:
+                arguments.append(f"media_type={quote_plus(options.media_type)}")
+            arguments.append(f"start={(page-1)*limit}")
+            arguments.append(f"limit={limit}")
+            parameters = "&".join(arguments)
+            pagination = Pagination(page=page, limit=limit)
+            url = (
+                f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
+                f"/music/browse?{parameters}"
+            )
+            _LOG.debug("[%s] Browse media %s (%s)", self._device.address, options, url)
+            data = await self.app_url(url)
+            return BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
+        except Exception as e:  # pylint: disable=W0718
+            _LOG.error("[%s] Error while browsing media %s", self._device.address, e)
+        return StatusCodes.BAD_REQUEST
+
+    async def search(self, options: SearchOptions) -> SearchResults | StatusCodes:
+        """
+        Execute a media search request.
+
+        :param options: search parameters
+        :return: search response or status code if any error occurs
+        """
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        try:
+            page = 1
+            limit = 12
+            if options.paging and options.paging.page:
+                page = options.paging.page
+            if options.paging and options.paging.limit:
+                limit = options.paging.limit
+            pagination = Pagination(page=page, limit=limit)
+            arguments: list[str] = []
+            if len(options.query) < 3:
+                return SearchResults(media=[], pagination=pagination)
+            arguments.append(f"query={quote_plus(options.query)}")
+            if options.media_id:
+                arguments.append(f"media_id={quote_plus(options.media_id)}")
+            if options.media_type:
+                arguments.append(f"media_type={quote_plus(options.media_type)}")
+            if self._device.device_config.media_search_catalog:
+                mode = 1  # Search music catalog (default)
+            else:
+                mode = 0  # Search user library
+            if search_filter := options.filter:
+                if album := search_filter.album:
+                    arguments.append(f"album={album}")
+                if artist := search_filter.artist:
+                    arguments.append(f"artist={artist}")
+                if media_classes := search_filter.media_classes:
+                    search_media_classes = ",".join(media_classes)
+                    arguments.append(f"media_classes={search_media_classes}")
+                    # Hack to trigger searching in user library : search_media_class should contain `directory`
+                    if "directory" in media_classes:
+                        mode = 0
+            arguments.append(f"mode={mode}")
+            arguments.append(f"limit={limit}")
+            parameters = "&".join(arguments)
+            url = (
+                f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
+                f"/music/browse?{parameters}"
+            )
+            _LOG.debug("Search media %s (%s)", options, url)
+            data = await self.app_url(url)
+            return SearchResults(media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination)
+        except Exception as e:  # pylint: disable=W0718
+            _LOG.error("Error while searching media %s", e)
+        return StatusCodes.BAD_REQUEST
+
+    async def play_media(self, params: dict[str, Any]):
+        """Play given media id."""
+        try:
+            media_id = quote_plus(params.get("media_id", ""))
+            media_type = quote_plus(params.get("media_type", ""))
+            # action = params.get("action", "PLAY_NOW")
+            # enqueue = action != "PLAY_NOW"
+            url = (
+                f"http://{self._device.device_address}:{self._device.device_config.media_browsing_port}"
+                f"/music/play?media_id={media_id}&media_type={media_type}"
+            )
+            _LOG.debug("Play media : %s (%s)", params, url)
+            await self.app_url(url)
+            return StatusCodes.OK
+        except Exception as e:  # pylint: disable=W0718
+            _LOG.error("Error while playing media %s", e)
+        return StatusCodes.BAD_REQUEST

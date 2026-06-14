@@ -14,20 +14,6 @@ import sys
 from typing import Any, cast
 
 import pyatv
-import ucapi
-import ucapi.api as uc
-from ucapi import Entity, media_player
-from ucapi import remote as ucapi_remote
-
-import config
-import selector
-import sensor
-import setup_flow
-import tv
-from config import AppleTVEntity
-from i18n import _a
-from media_player import AppleTVMediaPlayer
-from remote import AppleTVRemote
 import pyatv.protocols.companion.api
 from typing_extensions import override
 import ucapi
@@ -36,7 +22,10 @@ import ucapi.api as uc
 
 import config
 from entities import AppleTVEntity
+from i18n import _a
+from media_player import AppleTVMediaPlayer
 import monkey_patch
+from remote import AppleTVRemote
 import selector
 import sensor
 import setup_flow
@@ -393,8 +382,12 @@ async def main() -> None:
     await api.init("driver.json", setup_flow.driver_setup_handler)
     # temporary hack to change driver.json language texts until supported by the wrapper lib
     # Attention: keep in sync with `custom_config.py`!
-    api._driver_info["description"] = _a("Control your Apple TV with Remote Two/3.")  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    api._driver_info["setup_data_schema"] = setup_flow.setup_data_schema()  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    api._driver_info["description"] = _a(
+        "Control your Apple TV with Remote Two/3."
+    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    api._driver_info["setup_data_schema"] = (
+        setup_flow.setup_data_schema()
+    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
 
 
 if __name__ == "__main__":

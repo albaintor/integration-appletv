@@ -6,7 +6,7 @@ on:
     branches-ignore:
       - l10n
     paths:
-      - 'src/**'
+      - 'intg-appletv/**'
       - 'requirements.txt'
       - 'test-requirements.txt'
       - 'tests/**'
@@ -47,10 +47,10 @@ jobs:
           if [ -f test-requirements.txt ]; then pip install -r test-requirements.txt; fi
       - name: Lint with ruff
         run: |
-          python -m ruff check src
+          python -m ruff check intg-appletv
       - name: Check code formatting with ruff
         run: |
-          python -m ruff format --check src
+          python -m ruff format --check intg-appletv
       - name: Type check with pyright
         run: |
           python -m pyright

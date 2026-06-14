@@ -48,7 +48,7 @@ from pyatv.protocols.companion.api import CompanionAPI, MediaControlCommand, Sys
 from pyatv.protocols.mrp import MrpAudio, MrpRemoteControl, messages
 from pyee.asyncio import AsyncIOEventEmitter
 from ucapi import StatusCodes
-from ucapi.media_player import Attributes as MediaAttr, MediaContentType, RepeatMode, States as MediaState
+from ucapi.media_player import Attributes as MediaAttr, MediaClass, MediaContentType, RepeatMode, States as MediaState
 
 from config import AtvDevice, AtvProtocol
 from utils import replace_bad_chars
@@ -348,7 +348,9 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             return ""
         device_info = self._atv.device_info
         current_id = (
-            device_info.output_device_id if device_info is not None else None  # pyright: ignore[reportUnnecessaryComparison]
+            device_info.output_device_id
+            if device_info is not None
+            else None  # pyright: ignore[reportUnnecessaryComparison]
         )
         active = frozenset(d.identifier for d in self._atv.audio.output_devices if d.identifier != current_id)
         for name, ids in self._output_devices.items():
@@ -397,9 +399,21 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             MediaAttr.SOUND_MODE: self.output_devices,
             MediaAttr.SHUFFLE: self._shuffle,
             MediaAttr.REPEAT: self._repeat,
+            MediaAttr.SEARCH_MEDIA_CLASSES: [
+                MediaClass.ALBUM,
+                MediaClass.ARTIST,
+                MediaClass.PLAYLIST,
+                MediaClass.TRACK,
+                MediaClass.DIRECTORY,  # Used for navigating user library
+            ],
             # TODO when UC library updated
             # MediaAttr.MEDIA_ID : self._media_id,
         }
+
+    @property
+    def device_address(self) -> str | None:
+        """Return the device address."""
+        return str(self._apple_tv_conf.address) if self._apple_tv_conf else None
 
     def _backoff(self) -> float:
         if self._connection_attempts * BACKOFF_SEC >= BACKOFF_MAX:
@@ -1454,7 +1468,9 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         new_output_devices = list(device_entry)
         device_info = self._atv.device_info
         current_device_id = (
-            device_info.output_device_id if device_info is not None else None  # pyright: ignore[reportUnnecessaryComparison]
+            device_info.output_device_id
+            if device_info is not None
+            else None  # pyright: ignore[reportUnnecessaryComparison]
         )
         if current_device_id is not None and current_device_id not in new_output_devices:
             new_output_devices.append(current_device_id)

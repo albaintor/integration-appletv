@@ -6,12 +6,14 @@ Setup flow for Apple TV Remote integration.
 """
 
 import asyncio
+from enum import IntEnum
 import logging
 import os
 import socket
-from enum import IntEnum
+from typing import Any
 
 import pyatv
+import pyatv.const
 from ucapi import (
     AbortDriverSetup,
     DriverSetupRequest,
@@ -26,10 +28,10 @@ from ucapi import (
 )
 
 import config
-import discover
-import tv
 from config import AtvDevice, AtvProtocol
+import discover
 from i18n import __, _a, _af, _am
+import tv
 
 _LOG = logging.getLogger(__name__)
 
@@ -76,11 +78,14 @@ def setup_data_schema():
                             __("The integration will discover your Apple TV on your network."),
                             "\n",
                             __(
-                                "Apple TV 4 and newer are supported and the device must be on the same network as the remote."
+                                "Apple TV 4 and newer are supported and the device must be on the same network"
+                                + " as the remote."
                             ),
                             "\n",
                             __(
-                                "During the process, you need to enter multiple PINs that are shown on your Apple TV. Please make sure to set AirPlay access to _Anyone on the Same Network_ in Apple TV settings."
+                                "During the process, you need to enter multiple PINs that are shown on your Apple TV."
+                                + " Please make sure to set AirPlay access to _Anyone on the Same Network_ in Apple"
+                                + " TV settings."
                             ),
                             "\n\n",
                             # Translators: Make sure to include the support article link as Markdown. See English text
@@ -113,35 +118,37 @@ async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disa
 
     if isinstance(msg, UserDataResponse):
         _LOG.debug("%s", msg)
-        if _setup_step == SetupSteps.WORKFLOW_MODE:
-            if msg.input_values.get("configuration_mode", "") == "normal":
-                _setup_step = SetupSteps.CONFIGURATION_MODE
-                _LOG.debug("Starting normal setup workflow")
-                return __user_input_discovery()
-            _LOG.debug("User requested backup/restore of configuration")
-            return await _handle_backup_restore_step()
-        if _setup_step == SetupSteps.CONFIGURATION_MODE:
-            if "action" in msg.input_values:
-                _LOG.debug("Setup flow starts with existing configuration")
+        match _setup_step:
+            case SetupSteps.WORKFLOW_MODE:
+                if msg.input_values.get("configuration_mode", "") == "normal":
+                    _setup_step = SetupSteps.CONFIGURATION_MODE
+                    _LOG.debug("Starting normal setup workflow")
+                    return __user_input_discovery()
+                _LOG.debug("User requested backup/restore of configuration")
+            case SetupSteps.CONFIGURATION_MODE:
+                if "action" in msg.input_values:
+                    _LOG.debug("Setup flow starts with existing configuration")
+                    return await _handle_configuration_mode(msg)
+                if not _manual_address:
+                    _LOG.debug("Setup flow in discovery mode")
+                    _setup_step = SetupSteps.DISCOVER
+                    return await _handle_discovery(msg)
+                _LOG.debug("Setup flow configuration mode")
                 return await _handle_configuration_mode(msg)
-            if not _manual_address:
-                _LOG.debug("Setup flow in discovery mode")
-                _setup_step = SetupSteps.DISCOVER
+            case SetupSteps.DISCOVER if "address" in msg.input_values:
                 return await _handle_discovery(msg)
-            _LOG.debug("Setup flow configuration mode")
-            return await _handle_configuration_mode(msg)
-        if _setup_step == SetupSteps.DISCOVER and "address" in msg.input_values:
-            return await _handle_discovery(msg)
-        if _setup_step == SetupSteps.DEVICE_CHOICE and "choice" in msg.input_values:
-            return await _handle_device_choice(msg)
-        if _setup_step == SetupSteps.PAIRING_AIRPLAY and "pin_airplay" in msg.input_values:
-            return await _handle_user_data_airplay_pin(msg)
-        if _setup_step == SetupSteps.PAIRING_COMPANION and "pin_companion" in msg.input_values:
-            return await _handle_user_data_companion_pin(msg)
-        if _setup_step == SetupSteps.RECONFIGURE:
-            return await _handle_device_reconfigure(msg)
-        if _setup_step == SetupSteps.BACKUP_RESTORE:
-            return await _handle_backup_restore(msg)
+            case SetupSteps.DEVICE_CHOICE if "choice" in msg.input_values:
+                return await _handle_device_choice(msg)
+            case SetupSteps.PAIRING_AIRPLAY if "pin_airplay" in msg.input_values:
+                return await _handle_user_data_airplay_pin(msg)
+            case SetupSteps.PAIRING_COMPANION if "pin_companion" in msg.input_values:
+                return await _handle_user_data_companion_pin(msg)
+            case SetupSteps.RECONFIGURE:
+                return await _handle_device_reconfigure(msg)
+            case SetupSteps.BACKUP_RESTORE:
+                return await _handle_backup_restore(msg)
+            case _:
+                pass
         _LOG.error("No or invalid user response was received: %s", msg)
     elif isinstance(msg, AbortDriverSetup):
         _LOG.info("Setup was aborted with code: %s", msg.error)
@@ -175,20 +182,23 @@ async def _handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | Se
     reconfigure = msg.reconfigure
     _LOG.debug("Starting driver setup, reconfigure=%s", reconfigure)
 
+    devices = config.get_devices()
+
     if reconfigure:
         _setup_step = SetupSteps.CONFIGURATION_MODE
 
         # make sure configuration is up-to-date
-        if config.devices.migration_required():
-            await config.devices.migrate()
+        if devices.migration_required():
+            await devices.migrate()
 
         # check after devices change and update configuration if necessary
-        await config.devices.handle_devices_change()
+        await devices.handle_devices_change()
 
         # get all configured devices for the user to choose from
-        dropdown_devices = []
-        for device in config.devices.all():
-            dropdown_devices.append({"id": device.identifier, "label": {"en": f"{device.name} ({device.identifier})"}})
+        dropdown_devices = [
+            {"id": device.identifier, "label": {"en": f"{device.name} ({device.identifier})"}}
+            for device in devices.all()
+        ]
 
         # build user actions, based on available devices
         dropdown_actions = [
@@ -249,7 +259,7 @@ async def _handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | Se
         )
 
     # Initial setup, make sure we have a clean configuration
-    config.devices.clear()  # triggers device instance removal
+    devices.clear()  # triggers device instance removal
     _setup_step = SetupSteps.WORKFLOW_MODE
     return __workflow_mode()
 
@@ -281,15 +291,17 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
             _cfg_add_device = True
         case "remove":
             choice = msg.input_values["choice"]
-            if not config.devices.remove(choice):
+            devices = config.get_devices()
+            if not devices.remove(choice):
                 _LOG.warning("Could not remove device from configuration: %s", choice)
                 return SetupError(error_type=IntegrationSetupError.OTHER)
-            config.devices.store()
+            devices.store()
             return SetupComplete()
         case "configure":
             # Reconfigure device if the identifier has changed
             choice = msg.input_values["choice"]
-            selected_device = config.devices.get(choice)
+            devices = config.get_devices()
+            selected_device = devices.get(choice)
             if not selected_device:
                 _LOG.warning("Can not configure device from configuration: %s", choice)
                 return SetupError(error_type=IntegrationSetupError.OTHER)
@@ -300,20 +312,21 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
             # Found mac address/identifier of selected AppleTV upon detection
             found_selected_device_id = ""
             for discovered_atv in discovered_atvs:
-                # List of detected AppleTVs : exclude already configured ones except the one the user selected
-                if (
-                    selected_device.identifier != discovered_atv.identifier
-                    and selected_device.mac_address != discovered_atv.identifier
-                    and config.devices.contains(discovered_atv.identifier)
-                ):
-                    _LOG.info("Skipping device %s: already configured", discovered_atv.identifier)
+                if discovered_atv.identifier is None:
+                    _LOG.warning("Skipping device: no identifier! %s", discovered_atv)
                     continue
-                if discovered_atv.identifier in [selected_device.identifier, selected_device.mac_address]:
-                    found_selected_device_id = discovered_atv.identifier
+                # List of detected AppleTVs : exclude already configured ones except the one the user selected
+                identifier = discovered_atv.identifier
+                if identifier is None:  # pyright: ignore[reportUnnecessaryComparison]
+                    continue
+                selected_ids = (selected_device.identifier, selected_device.mac_address)
+                if identifier not in selected_ids and devices.contains(identifier):
+                    _LOG.info("Skipping device %s: already configured", identifier)
+                    continue
+                if identifier in [selected_device.identifier, selected_device.mac_address]:
+                    found_selected_device_id = identifier
                 label = f"{discovered_atv.name} ({discovered_atv.address})"
-                dropdown_items.append(
-                    {"id": discovered_atv.identifier, "label": {"en": label + " (" + discovered_atv.identifier + ")"}}
-                )
+                dropdown_items.append({"id": identifier, "label": {"en": f"{label} ({identifier})"}})
 
             dropdown_items.append(
                 {
@@ -324,8 +337,9 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
 
             _setup_step = SetupSteps.RECONFIGURE
             _reconfigured_device = selected_device
-            mac_address = selected_device.mac_address if selected_device.mac_address else ""
-            address = selected_device.address if selected_device.address else ""
+            mac_address = selected_device.mac_address or ""
+            address = selected_device.address or ""
+            global_volume = selected_device.global_volume if selected_device.global_volume is not None else True
 
             return RequestUserInput(
                 _af("Configure your Apple TV (configured mac address {mac_address})", mac_address=mac_address),
@@ -345,7 +359,7 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
                         "id": "address",
                         "label": _a("IP address (optional)"),
                     },
-                    __global_volume(_reconfigured_device.global_volume),
+                    __global_volume(enabled=global_volume),
                     __media_browsing(_reconfigured_device.media_browsing),
                     __media_browsing_port(_reconfigured_device.media_browsing_port),
                     __media_search_catalog(_reconfigured_device.media_search_catalog),
@@ -353,7 +367,7 @@ async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput 
             )
 
         case "reset":
-            config.devices.clear()  # triggers device instance removal
+            config.get_devices().clear()  # triggers device instance removal
         case "backup_restore":
             return await _handle_backup_restore_step()
         case _:
@@ -406,8 +420,10 @@ async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupEr
             device.name,
             device.address,
         )
+        if device.identifier is None:
+            continue
         # if we are adding a new device: make sure it's not already configured
-        if _cfg_add_device and config.devices.contains(device.identifier):
+        if _cfg_add_device and config.get_devices().contains(device.identifier):
             _LOG.info("Skipping found device %s: already configured", device.identifier)
             continue
 
@@ -427,7 +443,7 @@ async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupEr
                 "id": "choice",
                 "label": _a("Choose your Apple TV"),
             },
-            __global_volume(True),
+            __global_volume(enabled=True),
             __media_browsing(False),
             __media_browsing_port(),
             __media_search_catalog(True),
@@ -563,23 +579,22 @@ async def _handle_user_data_airplay_pin(
         _LOG.error("Pairing Apple TV device no longer available after entering AirPlay pin. Aborting setup")
         return SetupError()
 
-    await _pairing_apple_tv.enter_pin(msg.input_values["pin_airplay"])
+    await _pairing_apple_tv.enter_pin(int(msg.input_values["pin_airplay"]))
 
-    res = await _pairing_apple_tv.finish_pairing()
-    if res is None:
+    pairing_result = await _pairing_apple_tv.finish_pairing()
+    if pairing_result is None or pairing_result.credentials is None:
         return SetupError()
 
     # Store credentials
-    c = {"protocol": AtvProtocol.AIRPLAY, "credentials": res.credentials}
-    _pairing_apple_tv.add_credentials(c)
+    _pairing_apple_tv.add_credentials({AtvProtocol.AIRPLAY: pairing_result.credentials})
 
     # Start new pairing process
     name = os.getenv("UC_CLIENT_NAME", socket.gethostname().split(".", 1)[0])
-    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.Companion, f"{name} Companion")
-    if res is None:
+    pairing_pin = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.Companion, f"{name} Companion")
+    if pairing_pin is None:
         return SetupError()
 
-    if res == 0:
+    if pairing_pin == 0:
         _LOG.debug("Device provides PIN")
         _setup_step = SetupSteps.PAIRING_COMPANION
         return RequestUserInput(
@@ -594,7 +609,9 @@ async def _handle_user_data_airplay_pin(
         )
 
     _LOG.debug("We provide companion PIN")
-    return RequestUserConfirmation(_af("Please enter the following companion PIN on your Apple TV: {pin}", pin=res))
+    return RequestUserConfirmation(
+        _af("Please enter the following companion PIN on your Apple TV: {pin}", pin=pairing_pin)
+    )
 
 
 async def _handle_user_data_companion_pin(msg: UserDataResponse) -> SetupComplete | SetupError:
@@ -614,22 +631,21 @@ async def _handle_user_data_companion_pin(msg: UserDataResponse) -> SetupComplet
         _LOG.error("Pairing Apple TV device no longer available after entering companion pin. Aborting setup")
         return SetupError()
 
-    await _pairing_apple_tv.enter_pin(msg.input_values["pin_companion"])
+    await _pairing_apple_tv.enter_pin(int(msg.input_values["pin_companion"]))
 
     res = await _pairing_apple_tv.finish_pairing()
     await _pairing_apple_tv.disconnect()
 
-    if res is None:
+    if res is None or res.credentials is None:
         _pairing_apple_tv = None
         return SetupError()
 
-    c = {"protocol": AtvProtocol.COMPANION, "credentials": res.credentials}
-    _pairing_apple_tv.add_credentials(c)
+    _pairing_apple_tv.add_credentials({AtvProtocol.COMPANION: res.credentials})
 
     device = AtvDevice(
         identifier=_pairing_apple_tv.identifier,
         name=_pairing_apple_tv.name,
-        credentials=_pairing_apple_tv.get_credentials(),
+        credentials=_pairing_apple_tv.device_config.credentials,
         address=_pairing_apple_tv.address,
         mac_address=_pairing_apple_tv.identifier,
         global_volume=_pairing_apple_tv.device_config.global_volume,
@@ -637,7 +653,7 @@ async def _handle_user_data_companion_pin(msg: UserDataResponse) -> SetupComplet
         media_browsing_port=_pairing_apple_tv.device_config.media_browsing_port,
         media_search_catalog=_pairing_apple_tv.device_config.media_search_catalog,
     )
-    config.devices.add_or_update(device)  # triggers ATV instance creation
+    config.get_devices().add_or_update(device)  # triggers ATV instance creation
 
     # ATV device connection will be triggered with subscribe_entities request
 
@@ -691,14 +707,10 @@ async def _handle_device_reconfigure(msg: UserDataResponse) -> SetupComplete | S
     _reconfigured_device.media_browsing_port = media_browsing_port
     _reconfigured_device.media_search_catalog = media_search_catalog
 
-    config.devices.add_or_update(_reconfigured_device)  # triggers ATV instance update
+    config.get_devices().add_or_update(_reconfigured_device)  # triggers ATV instance update
 
     await asyncio.sleep(1)
-    new_identifier = (
-        _reconfigured_device.identifier
-        if _reconfigured_device.mac_address is None
-        else _reconfigured_device.mac_address
-    )
+    new_identifier = _reconfigured_device.mac_address or _reconfigured_device.identifier
     _LOG.info("Setup successfully completed for %s with new identifier : %s", _reconfigured_device.name, new_identifier)
 
     return SetupComplete()
@@ -806,7 +818,7 @@ def __user_input_discovery():
     )
 
 
-def __global_volume(enabled: bool):
+def __global_volume(*, enabled: bool) -> dict[str, Any]:
     return {
         "id": "global_volume",
         "label": _a("Change volume on all connected devices"),
