@@ -348,9 +348,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             return ""
         device_info = self._atv.device_info
         current_id = (
-            device_info.output_device_id
-            if device_info is not None
-            else None  # pyright: ignore[reportUnnecessaryComparison]
+            device_info.output_device_id if device_info is not None else None  # pyright: ignore[reportUnnecessaryComparison]
         )
         active = frozenset(d.identifier for d in self._atv.audio.output_devices if d.identifier != current_id)
         for name, ids in self._output_devices.items():
@@ -1477,9 +1475,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         new_output_devices = list(device_entry)
         device_info = self._atv.device_info
         current_device_id = (
-            device_info.output_device_id
-            if device_info is not None
-            else None  # pyright: ignore[reportUnnecessaryComparison]
+            device_info.output_device_id if device_info is not None else None  # pyright: ignore[reportUnnecessaryComparison]
         )
         if current_device_id is not None and current_device_id not in new_output_devices:
             new_output_devices.append(current_device_id)
