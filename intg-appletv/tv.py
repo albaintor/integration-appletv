@@ -348,7 +348,9 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             return ""
         device_info = self._atv.device_info
         current_id = (
-            device_info.output_device_id if device_info is not None else None  # pyright: ignore[reportUnnecessaryComparison]
+            device_info.output_device_id
+            if device_info is not None
+            else None  # pyright: ignore[reportUnnecessaryComparison]
         )
         active = frozenset(d.identifier for d in self._atv.audio.output_devices if d.identifier != current_id)
         for name, ids in self._output_devices.items():
@@ -527,7 +529,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         for protocol, credential in credentials.items():
             self._device.credentials.append({"protocol": protocol.value, "credentials": credential})
 
-    async def start_pairing(self, protocol: Protocol, name: str) -> int | None:
+    async def start_pairing(self, protocol: Protocol, name: str, password: str | None = None) -> int | None:
         """Start the pairing process with the Apple TV."""
         if not self._pairing_atv:
             _LOG.error("[%s] Pairing requires initialized ATV device!", self.log_id)
@@ -535,6 +537,15 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
 
         _LOG.debug("[%s] Pairing started", self.log_id)
         self._pairing_process = await pyatv.pair(self._pairing_atv, protocol, self._loop, name=name)
+        if password:
+            service = self._pairing_atv.get_service(protocol)
+            if service:
+                _LOG.debug("[%s] Using password for pairing protocol %s", self.log_id, protocol.name)
+                service.password = password
+                self._pairing_process.pin(password)
+                await self._pairing_process.begin()
+                return 1
+
         await self._pairing_process.begin()
 
         if self._pairing_process.device_provides_pin:
@@ -1454,7 +1465,9 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
         new_output_devices = list(device_entry)
         device_info = self._atv.device_info
         current_device_id = (
-            device_info.output_device_id if device_info is not None else None  # pyright: ignore[reportUnnecessaryComparison]
+            device_info.output_device_id
+            if device_info is not None
+            else None  # pyright: ignore[reportUnnecessaryComparison]
         )
         if current_device_id is not None and current_device_id not in new_output_devices:
             new_output_devices.append(current_device_id)
