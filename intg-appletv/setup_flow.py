@@ -50,16 +50,15 @@ class SetupSteps(IntEnum):
     BACKUP_RESTORE = 8
 
 
-# pylint: disable=C0103
 _setup_step = SetupSteps.INIT
-_cfg_add_device: bool = False  # No idea why pylint is complaining this is a constant! pylint: disable=C0103
-_manual_address: bool = False  # pylint: disable=C0103
-_discovered_atvs: list[pyatv.interface.BaseConfig] | None = None  # pylint: disable=C0103
-_pairing_apple_tv: tv.AppleTv | None = None  # pylint: disable=C0103
-_reconfigured_device: AtvDevice | None = None  # pylint: disable=C0103
+_cfg_add_device: bool = False
+_manual_address: bool = False
+_discovered_atvs: list[pyatv.interface.BaseConfig] | None = None
+_pairing_apple_tv: tv.AppleTv | None = None
+_reconfigured_device: AtvDevice | None = None
 
 
-def setup_data_schema():
+def setup_data_schema() -> dict[str, Any]:
     """
     Get the JSON setup data structure for the driver.json file.
 
@@ -98,7 +97,7 @@ def setup_data_schema():
     }
 
 
-async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disable=too-many-return-statements,R0912
+async def driver_setup_handler(msg: SetupDriver) -> SetupAction:
     """
     Dispatch driver setup requests to corresponding handlers.
 
@@ -125,6 +124,7 @@ async def driver_setup_handler(msg: SetupDriver) -> SetupAction:  # pylint: disa
                     _LOG.debug("Starting normal setup workflow")
                     return __user_input_discovery()
                 _LOG.debug("User requested backup/restore of configuration")
+                return await _handle_backup_restore_step()
             case SetupSteps.CONFIGURATION_MODE:
                 if "action" in msg.input_values:
                     _LOG.debug("Setup flow starts with existing configuration")
@@ -264,7 +264,6 @@ async def _handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | Se
     return __workflow_mode()
 
 
-# pylint: disable=R0911
 async def _handle_configuration_mode(msg: UserDataResponse) -> RequestUserInput | SetupComplete | SetupError:
     """
     Process user data response from the configuration mode screen.
