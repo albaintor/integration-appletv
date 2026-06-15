@@ -5,7 +5,6 @@ This module handles monkey patching of the pyatv library.
 :copyright: (c) 2023-2024 by Unfolded Circle ApS.
 :license: Mozilla Public License Version 2.0, see LICENSE for more details.
 """
-
 # pyright: reportPrivateUsage=false
 
 import logging
