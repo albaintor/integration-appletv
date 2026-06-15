@@ -28,7 +28,12 @@ Also the integration must be configured in the setup flow as following :
 - Search media : by default, the search is performed in the catalog. You can change this setting to search only in the user library.
 - On AppleTV side : the app has to be launched at least once and navigate into music section to get access to the music library.
 
-**! Note : this is an experimental feature, use it at your own risks !**
+
+**! Note for tvOS 27 beta users !**
+<br> Apple broke the Airplay pairing process (no pin code request displayed). 
+As a workaround : 
+1. Define a password in Apple TV settings : `Settings` > `AirPlay & Apple Home` > `Access` > `Password`
+2. Launch the setup flow and right after device discovery a new password field is available : fill in the defined password and proceed
 
 
 Supported versions:
