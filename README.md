@@ -34,6 +34,7 @@ Also the integration must be configured in the setup flow as following :
 As a workaround : 
 1. Define a password in Apple TV settings : `Settings` > `AirPlay & Apple Home` > `Access` > `Password`
 2. Launch the setup flow and right after device discovery a new password field is available : fill in the defined password and proceed
+3. Disable the password after the setup flow (or else the integration won't be able to connect)
 
 
 Supported versions:
