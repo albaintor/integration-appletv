@@ -15,6 +15,7 @@ from typing import Any, cast
 
 import pyatv
 import pyatv.protocols.companion.api
+from pyatv.protocols.airplay.pairing import AirPlayPairingHandler
 from typing_extensions import override
 import ucapi
 from ucapi import Entity, media_player
@@ -364,6 +365,16 @@ async def main() -> None:
     companion_api = cast("Any", pyatv.protocols.companion.api.CompanionAPI)
     companion_api.connect = monkey_patch.patched_pyatv_companion_connect
     companion_api.system_info = monkey_patch.patched_pyatv_companion_system_info
+
+    # TODO patch for tvOS 27
+    airplay_pairing_handler = AirPlayPairingHandler
+    airplay_pairing_handler.begin = monkey_patch.patched_airplay_pairing_handler_begin
+    airplay_pairing_handler.pin = monkey_patch.patched_airplay_pairing_handler_pin
+    setattr(
+        AirPlayPairingHandler,
+        "device_provides_pin",
+        monkey_patch.patched_airplay_pairing_handler_device_provides_pin,
+    )
 
     # load paired devices
     config.devices = config.Devices(api.config_dir_path, on_device_added, on_device_removed)

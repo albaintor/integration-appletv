@@ -64,7 +64,6 @@ def setup_data_schema() -> dict[str, Any]:
 
     :return: ``setup_data_schema`` json object
     """
-    # pylint: disable=line-too-long
     return {
         "title": _a("Integration setup"),
         "settings": [
@@ -442,6 +441,7 @@ async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupEr
                 "id": "choice",
                 "label": _a("Choose your Apple TV"),
             },
+            __device_password(password=""),
             __global_volume(enabled=True),
             __media_browsing(False),
             __media_browsing_port(),
@@ -494,6 +494,7 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
 
     choice = msg.input_values["choice"]
     global_volume = msg.input_values.get("global_volume", "true") == "true"
+    device_password = msg.input_values["device_password"]
     media_browsing = msg.input_values.get("media_browsing", "false") == "true"
     media_browsing_port = 8000
     try:
@@ -537,7 +538,7 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
     # Hook up to signals
     # TODO error conditions in start_pairing?
     name = os.getenv("UC_CLIENT_NAME", socket.gethostname().split(".", 1)[0])
-    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.AirPlay, f"{name} Airplay")
+    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.AirPlay, f"{name} Airplay", device_password)
     if res is None:
         return SetupError()
 
@@ -556,7 +557,40 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
         )
 
     _LOG.debug("We provide AirPlay-Code")
-    return RequestUserConfirmation(_af("Please enter the following AirPlay-Code on your Apple TV: {pin}", pin=res))
+
+    # return RequestUserConfirmation(_af("Please enter the following AirPlay-Code on your Apple TV: {pin}", pin=res))
+    # No need for pin code, grab Airplay credentials and switch to Companion protocol
+    pairing_result = await _pairing_apple_tv.finish_pairing()
+    if pairing_result is None or pairing_result.credentials is None:
+        return SetupError()
+
+    # Store credentials
+    _pairing_apple_tv.add_credentials({AtvProtocol.AIRPLAY: pairing_result.credentials})
+
+    # Start new pairing process
+    name = os.getenv("UC_CLIENT_NAME", socket.gethostname().split(".", 1)[0])
+    pairing_pin = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.Companion, f"{name} Companion")
+    if pairing_pin is None:
+        return SetupError()
+
+    if pairing_pin == 0:
+        _LOG.debug("Device provides PIN")
+        _setup_step = SetupSteps.PAIRING_COMPANION
+        return RequestUserInput(
+            _a("Please enter the shown PIN on your Apple TV"),
+            [
+                {
+                    "field": {"number": {"max": 9999, "min": 0, "value": 0000}},
+                    "id": "pin_companion",
+                    "label": _a("Apple TV PIN"),
+                }
+            ],
+        )
+
+    _LOG.debug("We provide companion PIN")
+    return RequestUserConfirmation(
+        _af("Please enter the following companion PIN on your Apple TV: {pin}", pin=pairing_pin)
+    )
 
 
 async def _handle_user_data_airplay_pin(
@@ -824,6 +858,12 @@ def __global_volume(*, enabled: bool) -> dict[str, Any]:
         "field": {"checkbox": {"value": enabled}},
     }
 
+def __device_password(*, password: str) -> dict[str, Any]:
+    return {
+        "id": "device_password",
+        "label": _a("Set device password if defined in Apple TV settings (or leave blank)"),
+        "field": {"text": {"value": password}},
+    }
 
 def __media_browsing(enabled: bool):
     return {

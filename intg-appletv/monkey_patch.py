@@ -54,9 +54,6 @@ async def patched_pyatv_companion_system_info(self: pyatv.protocols.companion.ap
     """Patch pyatv method to send system information to device."""
     creds = pyatv.auth.hap_pairing.parse_credentials(self.core.service.credentials)
     info = self.core.settings.info
-    # `_i` needs to be unique per client, otherwise multiple clients will get disconnected!
-    if info.rp_id is None:
-        info.rp_id = os.urandom(6).hex()
     _LOG.debug("Sending system information")
     await self._send_command(
         "_systemInfo",
@@ -66,7 +63,8 @@ async def patched_pyatv_companion_system_info(self: pyatv.protocols.companion.ap
             "_clFl": 128,
             # A null "_i" stops the device from pushing TVSystemStatus
             # (power state) events; fall back to a stable identifier.
-            "_i": info.rp_id,
+            # `_i` needs to be unique per client, otherwise multiple clients will get disconnected!
+            "_i": info.rp_id or info.device_id.replace(":", "").lower(),
             "_idsID": creds.client_id,
             "_pubID": info.device_id,
             "_sf": 256,
@@ -75,3 +73,30 @@ async def patched_pyatv_companion_system_info(self: pyatv.protocols.companion.ap
             "name": info.name,
         },
     )
+
+
+@property
+def patched_airplay_pairing_handler_device_provides_pin(self) -> bool:
+    """Return True if remote device presents PIN code, else False."""
+    return self.service.password is None
+
+
+async def patched_airplay_pairing_handler_begin(self) -> None:
+    """Start pairing process."""
+    self.http = await pyatv.support.http.http_connect(self.address, self.service.port)
+    self.pairing_procedure = pyatv.protocols.airplay.auth.pair_setup(
+        (
+            pyatv.auth.hap_pairing.AuthenticationType.HAP
+            if self.airplay_version == pyatv.protocols.airplay.utils.AirPlayMajorVersion.AirPlayV2
+            else pyatv.auth.hap_pairing.AuthenticationType.Legacy
+        ),
+        self.http,
+    )
+    self._has_paired = False
+    return await pyatv.support.error_handler(self.pairing_procedure.start_pairing, pyatv.exceptions.PairingError)
+
+
+def patched_airplay_pairing_handler_pin(self, pin) -> None:
+    """Pin code or password used for pairing."""
+    pin_str = str(pin)
+    self.pin_code = pin_str if pin_str == self.service.password else pin_str.zfill(4)
