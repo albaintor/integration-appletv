@@ -547,7 +547,7 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
 
         _LOG.debug("[%s] Pairing started", self.log_id)
         self._pairing_process = await pyatv.pair(self._pairing_atv, protocol, self._loop, name=name)
-        if password:
+        if password and protocol in (Protocol.AirPlay, Protocol.RAOP):
             service = self._pairing_atv.get_service(protocol)
             if service:
                 _LOG.debug("[%s] Using password for pairing protocol %s", self.log_id, protocol.name)
@@ -555,6 +555,8 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
                 self._pairing_process.pin(password)
                 await self._pairing_process.begin()
                 return 1
+        elif password:
+            _LOG.debug("[%s] Ignoring password for pairing protocol %s", self.log_id, protocol.name)
 
         await self._pairing_process.begin()
 

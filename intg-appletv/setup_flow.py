@@ -24,6 +24,7 @@ from ucapi import (
     SetupComplete,
     SetupDriver,
     SetupError,
+    UserConfirmationResponse,
     UserDataResponse,
 )
 
@@ -45,9 +46,10 @@ class SetupSteps(IntEnum):
     DISCOVER = 3
     DEVICE_CHOICE = 4
     PAIRING_AIRPLAY = 5
-    PAIRING_COMPANION = 6
-    RECONFIGURE = 7
-    BACKUP_RESTORE = 8
+    PAIRING_DISABLE_PASSWORD = 6
+    PAIRING_COMPANION = 7
+    RECONFIGURE = 8
+    BACKUP_RESTORE = 9
 
 
 _setup_step = SetupSteps.INIT
@@ -149,16 +151,19 @@ async def driver_setup_handler(msg: SetupDriver) -> SetupAction:
             case _:
                 pass
         _LOG.error("No or invalid user response was received: %s", msg)
+    elif isinstance(msg, UserConfirmationResponse):
+        match _setup_step:
+            case SetupSteps.PAIRING_COMPANION:
+                return await _handle_companion_pin_confirmation(msg)
+            case SetupSteps.PAIRING_DISABLE_PASSWORD:
+                return await _handle_user_disable_password()
+        _LOG.error("No or invalid user confirmation response was received: %s", msg)
     elif isinstance(msg, AbortDriverSetup):
         _LOG.info("Setup was aborted with code: %s", msg.error)
         if _pairing_apple_tv is not None:
             await _pairing_apple_tv.disconnect()
             _pairing_apple_tv = None
         _setup_step = SetupSteps.INIT
-
-    # user confirmation not used in setup process
-    # if isinstance(msg, UserConfirmationResponse):
-    #     return handle_user_confirmation(msg)
 
     return SetupError()
 
@@ -556,24 +561,31 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
             ],
         )
 
-    _LOG.debug("We provide AirPlay-Code")
-
-    # return RequestUserConfirmation(_af("Please enter the following AirPlay-Code on your Apple TV: {pin}", pin=res))
-    # No need for pin code, grab Airplay credentials and switch to Companion protocol
+    # Using given device password instead of pin code, grab Airplay credentials and switch to Companion protocol
     pairing_result = await _pairing_apple_tv.finish_pairing()
     if pairing_result is None or pairing_result.credentials is None:
         return SetupError()
 
-    # Store credentials
+    # Store Airplay credentials
     _pairing_apple_tv.add_credentials({AtvProtocol.AIRPLAY: pairing_result.credentials})
+    _LOG.debug("Airplay credentials : %s", pairing_result.credentials)
 
-    # Start new pairing process
+    _setup_step = SetupSteps.PAIRING_DISABLE_PASSWORD
+    return RequestUserConfirmation("Please disable the password in Settings > AirPlay & Apple Home > Access before proceeding.")
+
+
+
+async def _handle_user_disable_password() -> RequestUserInput | RequestUserConfirmation | SetupError:
+    global _pairing_apple_tv
+    global _setup_step
+    # Start new pairing process for Companion protocol
+
     name = os.getenv("UC_CLIENT_NAME", socket.gethostname().split(".", 1)[0])
-    pairing_pin = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.Companion, f"{name} Companion")
-    if pairing_pin is None:
+    res = await _pairing_apple_tv.start_pairing(pyatv.const.Protocol.Companion, f"{name} Companion")
+    if res is None:
         return SetupError()
 
-    if pairing_pin == 0:
+    if res == 0:
         _LOG.debug("Device provides PIN")
         _setup_step = SetupSteps.PAIRING_COMPANION
         return RequestUserInput(
@@ -588,9 +600,8 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
         )
 
     _LOG.debug("We provide companion PIN")
-    return RequestUserConfirmation(
-        _af("Please enter the following companion PIN on your Apple TV: {pin}", pin=pairing_pin)
-    )
+    _setup_step = SetupSteps.PAIRING_COMPANION
+    return RequestUserConfirmation(_af("Please enter the following companion PIN on your Apple TV: {pin}", pin=res))
 
 
 async def _handle_user_data_airplay_pin(
@@ -642,6 +653,7 @@ async def _handle_user_data_airplay_pin(
         )
 
     _LOG.debug("We provide companion PIN")
+    _setup_step = SetupSteps.PAIRING_COMPANION
     return RequestUserConfirmation(
         _af("Please enter the following companion PIN on your Apple TV: {pin}", pin=pairing_pin)
     )
@@ -666,13 +678,42 @@ async def _handle_user_data_companion_pin(msg: UserDataResponse) -> SetupComplet
 
     await _pairing_apple_tv.enter_pin(int(msg.input_values["pin_companion"]))
 
+    return await _finish_pairing()
+
+
+async def _handle_companion_pin_confirmation(msg: UserConfirmationResponse) -> SetupComplete | SetupError:
+    """Finish Companion pairing after the user entered the generated PIN on the Apple TV."""
+    global _pairing_apple_tv
+    global _setup_step
+
+    if not msg.confirm:
+        _LOG.info("User did not confirm Companion PIN entry. Aborting setup")
+        if _pairing_apple_tv is not None:
+            await _pairing_apple_tv.disconnect()
+            _pairing_apple_tv = None
+        _setup_step = SetupSteps.INIT
+        return SetupError()
+
+    _LOG.debug("User has confirmed Companion PIN entry")
+    return await _finish_pairing()
+
+
+async def _finish_pairing() -> SetupComplete | SetupError:
+    global _pairing_apple_tv
+
+    if _pairing_apple_tv is None:
+        _LOG.error("Pairing Apple TV device no longer available after entering companion pin. Aborting setup")
+        return SetupError()
+
     res = await _pairing_apple_tv.finish_pairing()
     await _pairing_apple_tv.disconnect()
 
     if res is None or res.credentials is None:
         _pairing_apple_tv = None
+        _LOG.error("Error while registering Apple TV device %s", res)
         return SetupError()
 
+    _LOG.debug("Companion credentials : %s", res.credentials)
     _pairing_apple_tv.add_credentials({AtvProtocol.COMPANION: res.credentials})
 
     device = AtvDevice(
