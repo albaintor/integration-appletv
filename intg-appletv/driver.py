@@ -15,7 +15,7 @@ from typing import Any, cast
 
 import pyatv
 from pyatv.protocols.airplay.pairing import AirPlayPairingHandler
-from pyatv.protocols.companion import CompanionPairingHandler
+from pyatv.protocols.airplay.auth.hap import AirPlayHapPairSetupProcedure
 from typing_extensions import override
 import ucapi
 from ucapi import Entity, media_player
@@ -363,6 +363,11 @@ async def main() -> None:
 
 
     # TODO patch for tvOS 27
+    pyatv.protocols.airplay.auth.pair_setup = monkey_patch.patched_airplay_hap_pair_setup
+    airplay_hap_setup_procedure = AirPlayHapPairSetupProcedure
+    airplay_hap_setup_procedure.__init__ = monkey_patch.patched_airplay_hap_pair_setup_procedure_init
+    airplay_hap_setup_procedure.start_pairing = monkey_patch.patched_airplay_hap_pair_setup_procedure_start_pairing
+
     airplay_pairing_handler = AirPlayPairingHandler
     airplay_pairing_handler.pin = monkey_patch.patched_protocol_pairing_handler_pin
     setattr(
@@ -370,6 +375,8 @@ async def main() -> None:
         "device_provides_pin",
         monkey_patch.patched_protocol_pairing_handler_device_provides_pin,
     )
+    airplay_pairing_handler.begin = monkey_patch.patched_airplay_pairing_begin
+
 
     # KO no password possible for Companion protocol
     # companion_pairing_handler = CompanionPairingHandler
