@@ -7,8 +7,10 @@ This module handles monkey patching of the pyatv library.
 """
 # pyright: reportPrivateUsage=false
 
+from collections.abc import Callable
 from copy import copy
 import logging
+from typing import Any, cast
 
 from pyatv import exceptions
 from pyatv.auth import hap_tlv8
@@ -22,6 +24,7 @@ from pyatv.support import error_handler
 from pyatv.support.http import HttpConnection, http_connect
 
 _LOG = logging.getLogger(__name__)
+HapPairSetupProcedureFactory = Callable[[HttpConnection, SRPAuthHandler, str | None], AirPlayHapPairSetupProcedure]
 
 
 def patched_airplay_hap_pair_setup(
@@ -39,7 +42,8 @@ def patched_airplay_hap_pair_setup(
     if auth_type == AuthenticationType.HAP:
         srp = SRPAuthHandler()
         srp.initialize()
-        return AirPlayHapPairSetupProcedure(connection, srp, display_name)
+        hap_pair_setup_procedure = cast("HapPairSetupProcedureFactory", AirPlayHapPairSetupProcedure)
+        return hap_pair_setup_procedure(connection, srp, display_name)
 
     msg = f"authentication type {auth_type} does not support Pair-Setup"
     raise exceptions.NotSupportedError(msg)
@@ -54,9 +58,11 @@ def patched_airplay_hap_pair_setup_procedure_init(
     """Initialize HAP pairing with an optional receiver-visible name."""
     self.http = http
     self.srp = auth_handler
-    self._headers = copy(_AIRPLAY_HEADERS)
+    headers = copy(_AIRPLAY_HEADERS)
     if display_name:
-        self._headers["X-Apple-Client-Name"] = display_name
+        headers["X-Apple-Client-Name"] = display_name
+    setup = cast("Any", self)
+    setup._headers = headers  # noqa: SLF001
     self._atv_salt = None
     self._atv_pub_key = None
 
@@ -67,11 +73,12 @@ async def patched_airplay_hap_pair_setup_procedure_start_pairing(self: AirPlayHa
     This method will show the expected PIN on screen.
     """
     self.srp.initialize()
+    headers = cast("Any", self)._headers  # noqa: SLF001
 
-    await self.http.post("/pair-pin-start", headers=self._headers)
+    await self.http.post("/pair-pin-start", headers=headers)
 
     data = {hap_tlv8.TlvValue.Method: b"\x00", hap_tlv8.TlvValue.SeqNo: b"\x01"}
-    resp = await self.http.post("/pair-setup", body=hap_tlv8.write_tlv(data), headers=self._headers)
+    resp = await self.http.post("/pair-setup", body=hap_tlv8.write_tlv(data), headers=headers)
     pairing_data = _get_pairing_data(resp)
 
     self._atv_salt = pairing_data[hap_tlv8.TlvValue.Salt]
