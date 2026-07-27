@@ -7,25 +7,19 @@ This module handles monkey patching of the pyatv library.
 """
 # pyright: reportPrivateUsage=false
 
-import logging
-from pyatv.protocols.airplay.pairing import AuthenticationType, AirPlayMajorVersion
-from pyatv import exceptions
-from pyatv.support import error_handler
-from pyatv.support.http import http_connect
-from pyatv.protocols.airplay.pairing import AirPlayPairingHandler
-from pyatv.auth import hap_tlv8
-from pyatv.auth.hap_pairing import (
-    PairSetupProcedure,
-)
-from pyatv.auth.hap_srp import SRPAuthHandler
-from pyatv.support.http import HttpConnection
 from copy import copy
-from typing import Optional
-from pyatv.protocols.airplay.auth.hap import _AIRPLAY_HEADERS, _get_pairing_data, AirPlayHapPairSetupProcedure
+import logging
+
+from pyatv import exceptions
+from pyatv.auth import hap_tlv8
+from pyatv.auth.hap_pairing import PairSetupProcedure
+from pyatv.auth.hap_srp import SRPAuthHandler
+from pyatv.protocols.airplay.auth.hap import _AIRPLAY_HEADERS, AirPlayHapPairSetupProcedure, _get_pairing_data
+from pyatv.protocols.airplay.auth.legacy import AirPlayLegacyPairSetupProcedure
+from pyatv.protocols.airplay.pairing import AirPlayMajorVersion, AirPlayPairingHandler, AuthenticationType
 from pyatv.protocols.airplay.srp import LegacySRPAuthHandler, new_credentials
-from pyatv.protocols.airplay.auth.legacy import (
-    AirPlayLegacyPairSetupProcedure,
-)
+from pyatv.support import error_handler
+from pyatv.support.http import HttpConnection, http_connect
 
 _LOG = logging.getLogger(__name__)
 
@@ -33,7 +27,7 @@ _LOG = logging.getLogger(__name__)
 def patched_airplay_hap_pair_setup(
     auth_type: AuthenticationType,
     connection: HttpConnection,
-    display_name: Optional[str] = None,
+    display_name: str | None = None,
     ) -> PairSetupProcedure:
     """Return Pair-Setup procedure with an optional receiver-visible name."""
     _LOG.debug("Setting up new AirPlay Pair-Setup procedure with type %s", auth_type)
@@ -47,8 +41,9 @@ def patched_airplay_hap_pair_setup(
         srp.initialize()
         return AirPlayHapPairSetupProcedure(connection, srp, display_name)
 
+    msg = f"authentication type {auth_type} does not support Pair-Setup"
     raise exceptions.NotSupportedError(
-        f"authentication type {auth_type} does not support Pair-Setup"
+        msg
     )
 
 
@@ -57,7 +52,7 @@ def patched_airplay_hap_pair_setup_procedure_init(
             self: AirPlayHapPairSetupProcedure,
             http: HttpConnection,
             auth_handler: SRPAuthHandler,
-            display_name: Optional[str] = None,
+            display_name: str | None = None,
     ):
     """Initialize HAP pairing with an optional receiver-visible name."""
     self.http = http

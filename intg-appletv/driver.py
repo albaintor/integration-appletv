@@ -13,6 +13,7 @@ import os
 import sys
 from typing import Any, cast
 
+import pyatv
 from typing_extensions import override
 import ucapi
 from ucapi import Entity, media_player
@@ -28,7 +29,6 @@ import selector
 import sensor
 import setup_flow
 import tv
-import pyatv
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 if sys.platform == "win32":
