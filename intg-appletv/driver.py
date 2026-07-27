@@ -13,9 +13,9 @@ import os
 import sys
 from typing import Any, cast
 
-import pyatv
-from pyatv.protocols.airplay.pairing import AirPlayPairingHandler
-from pyatv.protocols.airplay.auth.hap import AirPlayHapPairSetupProcedure
+import pyatv.protocols.airplay.auth as airplay_auth
+import pyatv.protocols.airplay.auth.hap as airplay_auth_hap
+import pyatv.protocols.airplay.pairing as airplay_pairing
 from typing_extensions import override
 import ucapi
 from ucapi import Entity, media_player
@@ -363,15 +363,16 @@ async def main() -> None:
 
 
     # TODO patch for tvOS 27
-    pyatv.protocols.airplay.auth.pair_setup = monkey_patch.patched_airplay_hap_pair_setup
-    airplay_hap_setup_procedure = AirPlayHapPairSetupProcedure
+    airplay_auth.pair_setup = monkey_patch.patched_airplay_hap_pair_setup
+    airplay_pairing.pair_setup = monkey_patch.patched_airplay_hap_pair_setup
+    airplay_hap_setup_procedure = airplay_auth_hap.AirPlayHapPairSetupProcedure
     airplay_hap_setup_procedure.__init__ = monkey_patch.patched_airplay_hap_pair_setup_procedure_init
     airplay_hap_setup_procedure.start_pairing = monkey_patch.patched_airplay_hap_pair_setup_procedure_start_pairing
 
-    airplay_pairing_handler = AirPlayPairingHandler
+    airplay_pairing_handler = airplay_pairing.AirPlayPairingHandler
     airplay_pairing_handler.pin = monkey_patch.patched_protocol_pairing_handler_pin
     setattr(
-        AirPlayPairingHandler,
+        airplay_pairing_handler,
         "device_provides_pin",
         monkey_patch.patched_protocol_pairing_handler_device_provides_pin,
     )
