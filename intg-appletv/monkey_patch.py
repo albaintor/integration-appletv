@@ -28,7 +28,7 @@ def patched_airplay_hap_pair_setup(
     auth_type: AuthenticationType,
     connection: HttpConnection,
     display_name: str | None = None,
-    ) -> PairSetupProcedure:
+) -> PairSetupProcedure:
     """Return Pair-Setup procedure with an optional receiver-visible name."""
     _LOG.debug("Setting up new AirPlay Pair-Setup procedure with type %s", auth_type)
 
@@ -42,18 +42,15 @@ def patched_airplay_hap_pair_setup(
         return AirPlayHapPairSetupProcedure(connection, srp, display_name)
 
     msg = f"authentication type {auth_type} does not support Pair-Setup"
-    raise exceptions.NotSupportedError(
-        msg
-    )
-
+    raise exceptions.NotSupportedError(msg)
 
 
 def patched_airplay_hap_pair_setup_procedure_init(
-            self: AirPlayHapPairSetupProcedure,
-            http: HttpConnection,
-            auth_handler: SRPAuthHandler,
-            display_name: str | None = None,
-    ):
+    self: AirPlayHapPairSetupProcedure,
+    http: HttpConnection,
+    auth_handler: SRPAuthHandler,
+    display_name: str | None = None,
+):
     """Initialize HAP pairing with an optional receiver-visible name."""
     self.http = http
     self.srp = auth_handler
@@ -63,23 +60,23 @@ def patched_airplay_hap_pair_setup_procedure_init(
     self._atv_salt = None
     self._atv_pub_key = None
 
+
 async def patched_airplay_hap_pair_setup_procedure_start_pairing(self: AirPlayHapPairSetupProcedure) -> None:
-        """Start the authentication process.
+    """Start the authentication process.
 
-        This method will show the expected PIN on screen.
-        """
-        self.srp.initialize()
+    This method will show the expected PIN on screen.
+    """
+    self.srp.initialize()
 
-        await self.http.post("/pair-pin-start", headers=self._headers)
+    await self.http.post("/pair-pin-start", headers=self._headers)
 
-        data = {hap_tlv8.TlvValue.Method: b"\x00", hap_tlv8.TlvValue.SeqNo: b"\x01"}
-        resp = await self.http.post(
-            "/pair-setup", body=hap_tlv8.write_tlv(data), headers=self._headers
-        )
-        pairing_data = _get_pairing_data(resp)
+    data = {hap_tlv8.TlvValue.Method: b"\x00", hap_tlv8.TlvValue.SeqNo: b"\x01"}
+    resp = await self.http.post("/pair-setup", body=hap_tlv8.write_tlv(data), headers=self._headers)
+    pairing_data = _get_pairing_data(resp)
 
-        self._atv_salt = pairing_data[hap_tlv8.TlvValue.Salt]
-        self._atv_pub_key = pairing_data[hap_tlv8.TlvValue.PublicKey]
+    self._atv_salt = pairing_data[hap_tlv8.TlvValue.Salt]
+    self._atv_pub_key = pairing_data[hap_tlv8.TlvValue.PublicKey]
+
 
 async def patched_airplay_pairing_begin(self: AirPlayPairingHandler) -> None:
     """Start pairing process."""
@@ -94,6 +91,4 @@ async def patched_airplay_pairing_begin(self: AirPlayPairingHandler) -> None:
         self._name,
     )
     self._has_paired = False
-    return await error_handler(
-        self.pairing_procedure.start_pairing, exceptions.PairingError
-    )
+    return await error_handler(self.pairing_procedure.start_pairing, exceptions.PairingError)
