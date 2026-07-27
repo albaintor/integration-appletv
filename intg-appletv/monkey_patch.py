@@ -86,7 +86,10 @@ async def patched_airplay_hap_pair_setup_procedure_start_pairing(self: AirPlayHa
 
 
 async def patched_airplay_hap_pair_setup_procedure_finish_pairing(
-    self: AirPlayHapPairSetupProcedure, username: str, pin_code: int, display_name: str | None  # noqa: ARG001
+    self: AirPlayHapPairSetupProcedure,
+    username: str,
+    pin_code: int,
+    display_name: str | None,  # noqa: ARG001
 ) -> HapCredentials:
     """Finish authentication process.
 
