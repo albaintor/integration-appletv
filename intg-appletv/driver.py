@@ -394,6 +394,7 @@ async def main() -> None:
     airplay_hap_setup_procedure = airplay_auth_hap.AirPlayHapPairSetupProcedure
     airplay_hap_setup_procedure.__init__ = monkey_patch.patched_airplay_hap_pair_setup_procedure_init
     airplay_hap_setup_procedure.start_pairing = monkey_patch.patched_airplay_hap_pair_setup_procedure_start_pairing
+    airplay_hap_setup_procedure.finish_pairing = monkey_patch.patched_airplay_hap_pair_setup_procedure_finish_pairing
     airplay_pairing_handler = airplay_pairing.AirPlayPairingHandler
     airplay_pairing_handler.begin = monkey_patch.patched_airplay_pairing_begin
 
