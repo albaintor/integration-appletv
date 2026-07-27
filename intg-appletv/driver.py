@@ -22,11 +22,13 @@ import config
 from entities import AppleTVEntity
 from i18n import _a
 from media_player import AppleTVMediaPlayer
+import monkey_patch
 from remote import AppleTVRemote
 import selector
 import sensor
 import setup_flow
 import tv
+import pyatv
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 if sys.platform == "win32":
@@ -383,6 +385,14 @@ async def main() -> None:
     logging.getLogger("remote").setLevel(level)
 
     # logging.getLogger("pyatv").setLevel(logging.DEBUG)
+
+    # TODO patch for tvOS 27, to be removed when pyatv updated
+    pyatv.protocols.airplay.auth.pair_setup = monkey_patch.patched_airplay_hap_pair_setup
+    airplay_hap_setup_procedure = pyatv.protocols.airplay.auth.hap.AirPlayHapPairSetupProcedure
+    airplay_hap_setup_procedure.__init__ = monkey_patch.patched_airplay_hap_pair_setup_procedure_init
+    airplay_hap_setup_procedure.start_pairing = monkey_patch.patched_airplay_hap_pair_setup_procedure_start_pairing
+    airplay_pairing_handler = pyatv.protocols.airplay.pairing.AirPlayPairingHandler
+    airplay_pairing_handler.begin = monkey_patch.patched_airplay_pairing_begin
 
     # load paired devices
     config.devices = config.Devices(api.config_dir_path, on_device_added, on_device_removed, on_device_updated)
