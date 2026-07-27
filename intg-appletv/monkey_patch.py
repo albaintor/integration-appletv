@@ -8,7 +8,7 @@ This module handles monkey patching of the pyatv library.
 # pyright: reportPrivateUsage=false
 
 import logging
-from pyatv.protocols.airplay.pairing import AuthenticationType, pair_setup, AirPlayMajorVersion
+from pyatv.protocols.airplay.pairing import AuthenticationType, AirPlayMajorVersion
 from pyatv import exceptions
 from pyatv.support import error_handler
 from pyatv.support.http import http_connect
@@ -89,7 +89,7 @@ async def patched_airplay_hap_pair_setup_procedure_start_pairing(self: AirPlayHa
 async def patched_airplay_pairing_begin(self: AirPlayPairingHandler) -> None:
     """Start pairing process."""
     self.http = await http_connect(self.address, self.service.port)
-    self.pairing_procedure = pair_setup(
+    self.pairing_procedure = patched_airplay_hap_pair_setup(
         (
             AuthenticationType.HAP
             if self.airplay_version == AirPlayMajorVersion.AirPlayV2
