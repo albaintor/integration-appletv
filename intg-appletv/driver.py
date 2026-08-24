@@ -361,32 +361,15 @@ async def main() -> None:
 
     # logging.getLogger("pyatv").setLevel(logging.DEBUG)
 
-
-    # TODO patch for tvOS 27
+    # TODO patch for tvOS 27, to be removed when pyatv updated
     airplay_auth.pair_setup = monkey_patch.patched_airplay_hap_pair_setup
     airplay_pairing.pair_setup = monkey_patch.patched_airplay_hap_pair_setup
     airplay_hap_setup_procedure = airplay_auth_hap.AirPlayHapPairSetupProcedure
     airplay_hap_setup_procedure.__init__ = monkey_patch.patched_airplay_hap_pair_setup_procedure_init
     airplay_hap_setup_procedure.start_pairing = monkey_patch.patched_airplay_hap_pair_setup_procedure_start_pairing
-
+    airplay_hap_setup_procedure.finish_pairing = monkey_patch.patched_airplay_hap_pair_setup_procedure_finish_pairing
     airplay_pairing_handler = airplay_pairing.AirPlayPairingHandler
-    airplay_pairing_handler.pin = monkey_patch.patched_protocol_pairing_handler_pin
-    setattr(
-        airplay_pairing_handler,
-        "device_provides_pin",
-        monkey_patch.patched_protocol_pairing_handler_device_provides_pin,
-    )
     airplay_pairing_handler.begin = monkey_patch.patched_airplay_pairing_begin
-
-
-    # KO no password possible for Companion protocol
-    # companion_pairing_handler = CompanionPairingHandler
-    # companion_pairing_handler.pin = monkey_patch.patched_protocol_pairing_handler_pin
-    # setattr(
-    #     CompanionPairingHandler,
-    #     "device_provides_pin",
-    #     monkey_patch.patched_protocol_pairing_handler_device_provides_pin,
-    # )
 
     # load paired devices
     config.devices = config.Devices(api.config_dir_path, on_device_added, on_device_removed)
@@ -405,12 +388,8 @@ async def main() -> None:
     await api.init("driver.json", setup_flow.driver_setup_handler)
     # temporary hack to change driver.json language texts until supported by the wrapper lib
     # Attention: keep in sync with `custom_config.py`!
-    api._driver_info["description"] = _a(
-        "Control your Apple TV with Remote Two/3."
-    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    api._driver_info["setup_data_schema"] = (
-        setup_flow.setup_data_schema()
-    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    api._driver_info["description"] = _a("Control your Apple TV with Remote Two/3.")  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    api._driver_info["setup_data_schema"] = setup_flow.setup_data_schema()  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
 
 
 if __name__ == "__main__":

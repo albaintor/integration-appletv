@@ -11,7 +11,7 @@ from typing import Any
 
 _BAD_WHITESPACE_RE = re.compile(r"[\f\n\r\t\v\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]")
 
-BROWINS_APP_ID = "albaintor.UC-Remote"
+BROWSIN_APP_ID = "albaintor.UC-Remote"
 
 
 def replace_bad_chars(value: str) -> str:

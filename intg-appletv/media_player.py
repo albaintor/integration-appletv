@@ -35,7 +35,7 @@ from ucapi.media_player import (
     SearchResults,
     States,
 )
-from utils import BROWINS_APP_ID, filter_attributes, key_update_helper
+from utils import BROWSIN_APP_ID, filter_attributes, key_update_helper
 
 _LOG = logging.getLogger(__name__)
 # Experimental features don't seem to work / supported (yet) with ATV4
@@ -417,7 +417,7 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                         return data
                 except Exception as ex:  # pylint: disable=W0718
                     _LOG.debug("[%s] App not ready, launch and retry %s", self._device.address, ex)
-                    res = await self._device.launch_app(BROWINS_APP_ID)
+                    res = await self._device.launch_app(BROWSIN_APP_ID)
                     if res != StatusCodes.OK:
                         _LOG.error(
                             "[%s] Unable to launch browsing app. Check that it is installed on your AppleTV",
