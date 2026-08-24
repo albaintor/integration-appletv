@@ -44,7 +44,9 @@ async def apple_tvs(
             DeviceModel.AppleTV4KGen2,
             DeviceModel.AppleTV4KGen3,
         }
-        return [tv for tv in atvs if tv.device_info is not None and tv.device_info.model in supported_models]  # pyright: ignore[reportUnnecessaryComparison]
+        return [
+            tv for tv in atvs if tv.device_info is not None and tv.device_info.model in supported_models
+        ]  # pyright: ignore[reportUnnecessaryComparison]
     except Exception as ex:  # noqa: BLE001 — broad catch retained for resilience
         _LOG.error("Failed to start discovery: %s", ex)
         return []

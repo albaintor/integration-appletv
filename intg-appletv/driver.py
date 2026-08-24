@@ -388,8 +388,12 @@ async def main() -> None:
     await api.init("driver.json", setup_flow.driver_setup_handler)
     # temporary hack to change driver.json language texts until supported by the wrapper lib
     # Attention: keep in sync with `custom_config.py`!
-    api._driver_info["description"] = _a("Control your Apple TV with Remote Two/3.")  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    api._driver_info["setup_data_schema"] = setup_flow.setup_data_schema()  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    api._driver_info["description"] = _a(
+        "Control your Apple TV with Remote Two/3."
+    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    api._driver_info["setup_data_schema"] = (
+        setup_flow.setup_data_schema()
+    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
 
 
 if __name__ == "__main__":
