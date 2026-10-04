@@ -575,7 +575,6 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
     )
 
 
-
 async def _handle_user_disable_password() -> RequestUserInput | RequestUserConfirmation | SetupError:
     global _setup_step
     # Start new pairing process for Companion protocol
