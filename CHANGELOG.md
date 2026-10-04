@@ -11,6 +11,54 @@ _Changes in the next release_
 
 ---
 
+## v1.23.0 - 2026-10-04
+### Fixed
+- Prevent overlapping Apple TV connection supervisors by propagating task cancellation and awaiting in-flight connect tasks during disconnect.
+- Preserve the full `pyatv` exception chain when connection setup fails, including the underlying AirPlay/RTSP timeout behind `Failed to set up remote control channel`.
+- Keep reconnect scheduling safe when a disconnect is detected during post-connect setup.
+
+### Added
+- Optional targeted AirPlay/AP2/RTSP/HTTP debug logging with `UC_APPLETV_PROTOCOL_DEBUG=true`.
+- Upstream connection state-machine unit tests and Python test workflow from Unfolded Circle v0.24.1.
+
+### Changed
+- Re-synced the non-conflicting runtime/tooling baseline with Unfolded Circle v0.24.1 while retaining this fork's media browsing, search, playback and configuration backup/restore features.
+- Updated the custom-driver documentation: packaged custom builds use `appletv_custom`, not `appletv2`.
+- Updated tvOS 27 pairing documentation and removed the obsolete password workaround.
+- Migrated repository translation configuration from Crowdin to SimpleLocalize.
+
+## v0.24.1 - 2026-08-07
+### Added
+- Cross-VLAN support by @henrikwidlund ([#173](https://github.com/unfoldedcircle/integration-appletv/pull/173)).
+
+### Changed
+- Use arm64 native runner and updated GitHub actions ([#166](https://github.com/unfoldedcircle/integration-appletv/pull/166)).
+
+## v0.24.0 - 2026-07-28
+### Added
+- Added localization languages: da_DK, hu_HU, it_IT, no_NO, pl_PL, pt_PT
+
+### Fixed
+- Pairing patch for tvOS 27 ([#165](https://github.com/unfoldedcircle/integration-appletv/pull/165))).
+- Verify scan match in `_find_atv` and bound `pyatv.connect` with a timeout ([#157](https://github.com/unfoldedcircle/integration-appletv/pull/157)).
+- Back off periodic app-list/output-device scans in poll worker ([#156](https://github.com/unfoldedcircle/integration-appletv/pull/156)).
+- Make debounce decorator per-instance to avoid cross-device cancellation ([#155](https://github.com/unfoldedcircle/integration-appletv/pull/155)).
+- Persist full device config on reconfigure and update live instance ([#154](https://github.com/unfoldedcircle/integration-appletv/pull/154)).
+- Make `connect()` idempotent and stop auth-failure self-cancel ([#153](https://github.com/unfoldedcircle/integration-appletv/pull/153)).
+
+### Changed
+- Switched translation management from Crowdin to SimpleLocalize.
+- Bump ruff from 0.15.17 to 0.15.20 ([#150](https://github.com/unfoldedcircle/integration-appletv/pull/150)).
+- Bump pyright from 1.1.410 to 1.1.411 ([#149](https://github.com/unfoldedcircle/integration-appletv/pull/149)).
+- Bump actions/setup-python from 6.2.0 to 6.3.0 ([#147](https://github.com/unfoldedcircle/integration-appletv/pull/147)).
+- Bump softprops/action-gh-release from 3.0.0 to 3.0.1 ([#144](https://github.com/unfoldedcircle/integration-appletv/pull/144)).
+
+## v0.23.0 - 2026-07-01
+### Changed
+- Update pyatv to 0.18.0, removing no longer required monkey patches ([#143](https://github.com/unfoldedcircle/integration-appletv/pull/143)).
+- Update dependencies.
+- Update PyInstaller Docker image to 3.11.13-0.7.0
+
 ## v0.22.2 - 2026-06-05
 ### Fixed
 - Handle pyatv deadlock exceptions ([#135](https://github.com/unfoldedcircle/integration-appletv/pull/135)).
