@@ -452,7 +452,7 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                 arguments.append(f"media_id={quote_plus(options.media_id)}")
             if options.media_type:
                 arguments.append(f"media_type={quote_plus(options.media_type)}")
-            arguments.append(f"start={(page-1)*limit}")
+            arguments.append(f"start={(page - 1) * limit}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
             pagination = Pagination(page=page, limit=limit)
