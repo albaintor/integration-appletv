@@ -1,0 +1,78 @@
+name: Publish v1.23.0
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/release-v1.23.0.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify version
+        run: |
+          test "$(jq -r .version driver.json)" = "1.23.0"
+
+      - name: Compile language files
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext
+          cd intg-appletv/locales
+          make all
+
+      - name: Build ARM64 integration
+        run: |
+          docker run --rm --name builder \
+            --platform=linux/arm64/v8 \
+            --user=$(id -u):$(id -g) \
+            -v ${GITHUB_WORKSPACE}:/workspace \
+            docker.io/unfoldedcircle/r2-pyinstaller:3.11.13-0.7.0 \
+            bash -c "cd /workspace && \
+              python -m pip install -r requirements.txt && \
+              python intg-appletv/custom_driver.py && \
+              pyinstaller --clean --onedir --name intg-appletv --add-data intg-appletv/locales:locales --collect-all zeroconf intg-appletv/driver.py"
+
+      - name: Package release
+        run: |
+          mkdir -p artifacts/bin
+          mv dist/intg-appletv/* artifacts/bin/
+          mv artifacts/bin/intg-appletv artifacts/bin/driver
+          mv driver_custom.json artifacts/driver.json
+          cp LICENSE artifacts/
+          echo "v1.23.0" > artifacts/version.txt
+          cd artifacts/bin/_internal/locales
+          rm -Rf *.pot Makefile README.md */LC_MESSAGES/*.po
+          cd "${GITHUB_WORKSPACE}"
+          tar czvf uc-intg-appletv-v1.23.0-aarch64.tar.gz -C artifacts .
+          echo "sha256  $(sha256sum uc-intg-appletv-v1.23.0-aarch64.tar.gz)" > uc-intg-appletv.hash
+
+      - name: Prepare release notes
+        run: |
+          awk '
+            /^## v1\.23\.0/ { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+      - name: Create v1.23.0 release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          tag_name: v1.23.0
+          target_commitish: 864365faae9c69b95448ef0a7e84d6311776b72f
+          name: v1.23.0
+          prerelease: false
+          generate_release_notes: true
+          body_path: release-notes.md
+          files: |
+            uc-intg-appletv-v1.23.0-aarch64.tar.gz
+            uc-intg-appletv.hash
