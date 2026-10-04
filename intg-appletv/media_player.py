@@ -429,7 +429,7 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                         data = await response.json()
                         _LOG.debug("[%s] App URL results (2) %s", self._device.address, data)
                         return data
-        except Exception as ex:  # pylint: disable=W0718
+        except Exception as ex:  # noqa: BLE001
             _LOG.debug("[%s] App URL error %s", self._device.address, ex)
             return None
 
@@ -514,7 +514,7 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             _LOG.debug("Search media %s (%s)", options, url)
             data = await self.app_url(url)
             return SearchResults(media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination)
-        except Exception as e:  # pylint: disable=W0718
+        except Exception as e:  # noqa: BLE001
             _LOG.error("Error while searching media %s", e)
         return StatusCodes.BAD_REQUEST
 
@@ -532,6 +532,6 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             _LOG.debug("Play media : %s (%s)", params, url)
             await self.app_url(url)
             return StatusCodes.OK
-        except Exception as e:  # pylint: disable=W0718
+        except Exception as e:  # noqa: BLE001
             _LOG.error("Error while playing media %s", e)
         return StatusCodes.BAD_REQUEST
