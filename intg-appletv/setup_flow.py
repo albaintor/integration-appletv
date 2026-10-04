@@ -891,12 +891,14 @@ def __global_volume(*, enabled: bool) -> dict[str, Any]:
         "field": {"checkbox": {"value": enabled}},
     }
 
+
 def __device_password(*, password: str) -> dict[str, Any]:
     return {
         "id": "device_password",
         "label": _a("Set device password if defined in Apple TV settings (or leave blank)"),
         "field": {"text": {"value": password}},
     }
+
 
 def __media_browsing(*, enabled: bool) -> dict[str, Any]:
     return {
