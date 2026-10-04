@@ -6,6 +6,7 @@ Setup flow for Apple TV Remote integration.
 """
 
 import asyncio
+import contextlib
 from enum import IntEnum
 import logging
 import os
@@ -448,9 +449,9 @@ async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupEr
             },
             __device_password(password=""),
             __global_volume(enabled=True),
-            __media_browsing(False),
+            __media_browsing(enabled=False),
             __media_browsing_port(),
-            __media_search_catalog(True),
+            __media_search_catalog(enabled=True),
         ],
     )
 
@@ -502,10 +503,8 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
     device_password = msg.input_values["device_password"]
     media_browsing = msg.input_values.get("media_browsing", "false") == "true"
     media_browsing_port = 8000
-    try:
+    with contextlib.suppress(ValueError):
         media_browsing_port = int(msg.input_values.get("media_browsing_port", "8000"))
-    except ValueError:
-        pass
     media_search_catalog = msg.input_values.get("media_search_catalog", "true") == "true"
 
     atv = _discovered_atv_from_identifier(choice)
@@ -571,12 +570,13 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
     _LOG.debug("Airplay credentials : %s", pairing_result.credentials)
 
     _setup_step = SetupSteps.PAIRING_DISABLE_PASSWORD
-    return RequestUserConfirmation("Please disable the password in Settings > AirPlay & Apple Home > Access before proceeding.")
+    return RequestUserConfirmation(
+        "Please disable the password in Settings > AirPlay & Apple Home > Access before proceeding."
+    )
 
 
 
 async def _handle_user_disable_password() -> RequestUserInput | RequestUserConfirmation | SetupError:
-    global _pairing_apple_tv
     global _setup_step
     # Start new pairing process for Companion protocol
 
@@ -668,8 +668,6 @@ async def _handle_user_data_companion_pin(msg: UserDataResponse) -> SetupComplet
     :param msg: response data from the requested user data
     :return: the setup action on how to continue: SetupComplete if a valid Apple TV device was chosen.
     """
-    global _pairing_apple_tv
-
     _LOG.debug("User has entered the Companion PIN")
 
     if _pairing_apple_tv is None:
@@ -746,10 +744,6 @@ async def _handle_device_reconfigure(msg: UserDataResponse) -> SetupComplete | S
     :param msg: response data from the requested user data
     :return: the setup action on how to continue: SetupComplete after updating configuration
     """
-    # flake8: noqa:F824
-    # pylint: disable=W0602
-    global _reconfigured_device
-
     if _reconfigured_device is None:
         return SetupError()
 
@@ -906,7 +900,7 @@ def __device_password(*, password: str) -> dict[str, Any]:
         "field": {"text": {"value": password}},
     }
 
-def __media_browsing(enabled: bool):
+def __media_browsing(*, enabled: bool) -> dict[str, Any]:
     return {
         "id": "media_browsing",
         "label": _a("Enable media browsing (experimental & requires a community app on Apple TV"),
@@ -922,7 +916,7 @@ def __media_browsing_port(value: int = 8000):
     }
 
 
-def __media_search_catalog(enabled: bool = True):
+def __media_search_catalog(*, enabled: bool = True) -> dict[str, Any]:
     return {
         "id": "media_search_catalog",
         "label": _a("Search media in catalog, else in user library"),
