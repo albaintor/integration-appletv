@@ -25,20 +25,21 @@ env:
   HASH_FILENAME: uc-intg-appletv.hash
   BUILD_CHANGELOG: build-changelog.md
   # Python version to use in the builder image. See https://hub.docker.com/r/unfoldedcircle/r2-pyinstaller for possible versions.
-  PYTHON_VER: 3.11.13-0.6.0
+  PYTHON_VER: 3.11.13-0.7.0
 
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
         with:
           # History of 200 should be more than enough to calculate commit count since last release tag.
           fetch-depth: 200
+          persist-credentials: false
 
       - name: Fetch all tags to determine version
         run: |
@@ -62,9 +63,6 @@ jobs:
 
       - name: Pyinstaller
         run: |
-          sudo apt-get install -y qemu-system-arm binfmt-support qemu-user-static
-          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-
           echo "Starting pyinstaller build"
           docker run --rm --name builder \
             --platform=linux/arm64/v8 \
@@ -117,12 +115,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 #v7.0.0
         with:
           node-version: "lts/*"
 
@@ -144,7 +143,7 @@ jobs:
     name: Create Release
     if: github.ref == 'refs/heads/main' || contains(github.ref, 'tags/v')
     runs-on: ubuntu-24.04
-    needs: [build, changelog]
+    needs: [ build, changelog ]
 
     steps:
       - name: Download build artifacts
@@ -176,9 +175,10 @@ jobs:
 
       # Checkout is required for the next `gh release delete` step
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
         with:
           path: main
+          persist-credentials: false
 
       # We have to delete the "latest" release, otherwise `softprops/action-gh-release` will only append the new artifact.
       # This simulates the old marvinpinto/action-automatic-releases action.
@@ -191,7 +191,7 @@ jobs:
 
       # Use conventional commit changelog, and append the GitHub generated changelog
       - name: Create Pre-Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda #v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 #v3
         if: "!contains(github.ref, 'tags/v')"
         with:
           prerelease: true
@@ -209,7 +209,7 @@ jobs:
           for filename in *.tar.gz; do echo "sha256  `sha256sum $filename`" >> ${{ env.HASH_FILENAME }}; done;
 
       - name: Create Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda #v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 #v3
         if: "contains(github.ref, 'tags/v')"
         with:
           prerelease: false
