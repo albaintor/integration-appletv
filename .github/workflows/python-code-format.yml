@@ -50,9 +50,6 @@ jobs:
       - name: Lint with ruff
         run: |
           python -m ruff check intg-appletv
-      - name: Show Ruff formatting diff
-        run: |
-          python -m ruff format --diff intg-appletv
       - name: Check code formatting with ruff
         run: |
           python -m ruff format --check intg-appletv
