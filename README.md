@@ -2,40 +2,43 @@
 
 This integration is based on the great [pyatv](https://github.com/postlund/pyatv) library and uses our
 [uc-integration-api](https://github.com/aitatoi/integration-python-library) to communicate with the Remote Two/3.
-[Crowdin translations](https://crowdin.com/project/uc-integration-apple-tv).
+[SimpleLocalize translations](https://simplelocalize.io/suggestions/?id=19205eea884c4c9d9e0e85957382d0a0).
 
 The driver discovers Apple TV devices on the network and pairs them using AirPlay and companion protocols.
 A [media player entity](https://github.com/unfoldedcircle/core-api/blob/main/doc/entities/entity_media_player.md)
 and a [remote entity](https://github.com/unfoldedcircle/core-api/blob/main/doc/entities/entity_remote.md)
 are exposed to the Remote Two/3.
 
-~~‼️ Do not install this integration as a custom integration on the Remote, or it can interfere with the included version.  
-Included integrations in the firmware cannot be updated manually. The integration can be run as an external integration
-for testing and development.~~
+## About this custom fork
 
-This is a modified version of the official Apple TV integration.
-The driver has been renamed to `appletv2` in order not to interfere with the internal driver.
-This version adds the following features :
-- Media Browsing
-- Search media
-- Play media
-- Backup/restore configuration (for easier updates)
+This repository is a modified version of the official Unfolded Circle Apple TV integration. The custom package generated
+by `intg-appletv/custom_driver.py` uses the driver id `appletv_custom` and the display name **Apple TV custom**. It is
+therefore distinct from the embedded `appletv` driver at the Unfolded Circle integration layer.
 
-To use these new features, one must install `U Remote Control` app on your Apple TV.
-Also the integration must be configured in the setup flow as following :
-- Enable media browsing
-- Check the configured port to match the port in the Apple TV app settings
-- Search media : by default, the search is performed in the catalog. You can change this setting to search only in the user library.
-- On AppleTV side : the app has to be launched at least once and navigate into music section to get access to the music library.
+The fork currently keeps the Unfolded Circle v0.24.1 runtime baseline while adding:
 
+- Media browsing
+- Media search
+- Media playback
+- Configuration backup/restore
 
-**! Note for tvOS 27 beta users !**
-<br> Apple broke the Airplay pairing process (no pin code request displayed). 
-As a workaround : 
-1. Define a password in Apple TV settings : `Settings` > `AirPlay & Apple Home` > `Access` > `Password`
-2. Launch the setup flow and right after device discovery a new password field is available : fill in the defined password and proceed
-3. Disable the password after the setup flow (or else the integration won't be able to connect)
+Media browsing, search and playback require the `U Remote Control` app on the Apple TV. In the setup flow:
 
+- Enable media browsing.
+- Make sure the configured port matches the port configured in the Apple TV app.
+- Media search uses the catalog by default; it can be switched to the user library.
+- Launch the Apple TV app at least once and open its Music section so it can access the music library.
+
+### tvOS 27
+
+tvOS 27 changed AirPlay HAP pairing and can suppress the PIN prompt when the client name is missing. This fork includes
+the same AirPlay pairing patch as Unfolded Circle v0.24.1, adding the client name to the pairing requests. The old
+password-based workaround documented by earlier versions of this fork is no longer required for normal pairing.
+
+A separate `pyatv 0.18.0` issue can still affect already paired devices on recent tvOS releases: discovery and credentials
+succeed, but the AirPlay 2 MRP remote-control tunnel can time out with
+`Failed to set up remote control channel`. Version 1.23.0 preserves the underlying exception traceback and prevents
+overlapping reconnect loops so this failure can be diagnosed correctly.
 
 Supported versions:
 - Apple TV 4 and newer models with tvOS 16+
@@ -82,7 +85,7 @@ issue in the library with all the required information to reproduce it.
 
 ### Network
 
-- The Apple TV device must be on the same network subnet as the Remote. Routed networks are not supported.
+- The Apple TV device must be on the same network subnet as the Remote, or the network must provide working mDNS reflection/routing for the required Apple TV services.
 - [Zeroconf](https://en.m.wikipedia.org/wiki/Zero-configuration_networking) (multicast DNS) must be a allowed.  
   Check your WiFi access point and router that this traffic is not filtered out.
 - When using DHCP: a static IP address reservation for the Apple TV device(s) is recommended.  
@@ -144,6 +147,10 @@ The configuration file is loaded & saved from the path specified in the environm
 Otherwise, the `HOME` path is used or the working directory as fallback.
 
 The client name prefix used for pairing can be set in ENV variable `UC_CLIENT_NAME`. The hostname is used by default.
+
+For low-level AirPlay/RTSP diagnostics, set `UC_APPLETV_PROTOCOL_DEBUG=true`. This enables DEBUG logging only for the
+relevant `pyatv` AirPlay, AP2 session, RTSP and HTTP loggers. Leave it disabled during normal use because these logs are
+verbose.
 
 ## Build distribution binary
 

@@ -242,11 +242,11 @@ class Devices:
                 if not found and self._remove_handler is not None:
                     self._remove_handler(old_device)
 
-            with open(self._cfg_file_path, "w+", encoding="utf-8") as f:
+            with self._cfg_file_path.open("w+", encoding="utf-8") as f:
                 json.dump(self._config, f, ensure_ascii=False, cls=_EnhancedJSONEncoder)
             return result
         # pylint: disable = W0718
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
             result = ConfigImportResult.ERROR
             _LOG.error(
                 "Cannot import the updated configuration %s, keeping existing configuration : %s", updated_config, ex
@@ -255,9 +255,8 @@ class Devices:
                 # Restore current configuration
                 self._config = config_backup
                 self.store()
-            # pylint: disable = W0718
-            except Exception:
-                pass
+            except Exception as rollback_ex:  # noqa: BLE001
+                _LOG.warning("Failed to restore previous configuration after import error: %s", rollback_ex)
         return result
 
     def load(self) -> bool:

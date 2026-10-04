@@ -12,15 +12,9 @@ from typing import Any, cast
 from urllib.parse import quote_plus
 
 import aiohttp
-import tv
-from config import AtvDevice
-from entities import AppleTVEntity
-from hid import UsagePage
-from hid.consumer_control_code import ConsumerControlCode
 from pyatv.const import PowerState
-from tv import AppleTv
 from typing_extensions import override
-from ucapi import IntegrationAPI, MediaPlayer, Pagination, StatusCodes, media_player
+from ucapi import IntegrationAPI, MediaPlayer, Pagination, StatusCodes
 from ucapi.media_player import (
     Attributes,
     BrowseMediaItem,
@@ -35,6 +29,12 @@ from ucapi.media_player import (
     SearchResults,
     States,
 )
+
+from config import AtvDevice
+from entities import AppleTVEntity
+from hid import UsagePage
+from hid.consumer_control_code import ConsumerControlCode
+from tv import AppleTv
 from utils import BROWSIN_APP_ID, filter_attributes, key_update_helper
 
 _LOG = logging.getLogger(__name__)
@@ -323,6 +323,8 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             case Commands.GUIDE:
                 res = await self._device.toggle_guide()
             case Commands.PLAY_MEDIA:
+                if params is None:
+                    return StatusCodes.BAD_REQUEST
                 res = await self.play_media(params)
             # --- simple commands ---
             case SimpleCommands.TOP_MENU:
@@ -415,7 +417,7 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                         data = await response.json()
                         _LOG.debug("[%s] App URL results %s", self._device.address, data)
                         return data
-                except Exception as ex:  # pylint: disable=W0718
+                except Exception as ex:  # noqa: BLE001
                     _LOG.debug("[%s] App not ready, launch and retry %s", self._device.address, ex)
                     res = await self._device.launch_app(BROWSIN_APP_ID)
                     if res != StatusCodes.OK:
@@ -429,10 +431,11 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                         data = await response.json()
                         _LOG.debug("[%s] App URL results (2) %s", self._device.address, data)
                         return data
-        except Exception as ex:  # pylint: disable=W0718
+        except Exception as ex:  # noqa: BLE001
             _LOG.debug("[%s] App URL error %s", self._device.address, ex)
             return None
 
+    @override
     async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
         """
         Execute entity browsing request.
@@ -452,7 +455,7 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                 arguments.append(f"media_id={quote_plus(options.media_id)}")
             if options.media_type:
                 arguments.append(f"media_type={quote_plus(options.media_type)}")
-            arguments.append(f"start={(page-1)*limit}")
+            arguments.append(f"start={(page - 1) * limit}")
             arguments.append(f"limit={limit}")
             parameters = "&".join(arguments)
             pagination = Pagination(page=page, limit=limit)
@@ -462,11 +465,17 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             )
             _LOG.debug("[%s] Browse media %s (%s)", self._device.address, options, url)
             data = await self.app_url(url)
-            return BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
-        except Exception as e:  # pylint: disable=W0718
+            if not isinstance(data, dict):
+                return StatusCodes.BAD_REQUEST
+            media = data.get("media")
+            if not isinstance(media, dict):
+                return StatusCodes.BAD_REQUEST
+            return BrowseResults(media=BrowseMediaItem(**media), pagination=pagination)
+        except Exception as e:  # noqa: BLE001
             _LOG.error("[%s] Error while browsing media %s", self._device.address, e)
         return StatusCodes.BAD_REQUEST
 
+    @override
     async def search(self, options: SearchOptions) -> SearchResults | StatusCodes:
         """
         Execute a media search request.
@@ -491,10 +500,8 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
                 arguments.append(f"media_id={quote_plus(options.media_id)}")
             if options.media_type:
                 arguments.append(f"media_type={quote_plus(options.media_type)}")
-            if self._device.device_config.media_search_catalog:
-                mode = 1  # Search music catalog (default)
-            else:
-                mode = 0  # Search user library
+            # 1 = music catalog (default), 0 = user library
+            mode = 1 if self._device.device_config.media_search_catalog else 0
             if search_filter := options.filter:
                 if album := search_filter.album:
                     arguments.append(f"album={album}")
@@ -515,12 +522,17 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             )
             _LOG.debug("Search media %s (%s)", options, url)
             data = await self.app_url(url)
-            return SearchResults(media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination)
-        except Exception as e:  # pylint: disable=W0718
+            if not isinstance(data, dict):
+                return StatusCodes.BAD_REQUEST
+            media = data.get("media")
+            if not isinstance(media, list) or not all(isinstance(item, dict) for item in media):
+                return StatusCodes.BAD_REQUEST
+            return SearchResults(media=[BrowseMediaItem(**item) for item in media], pagination=pagination)
+        except Exception as e:  # noqa: BLE001
             _LOG.error("Error while searching media %s", e)
         return StatusCodes.BAD_REQUEST
 
-    async def play_media(self, params: dict[str, Any]):
+    async def play_media(self, params: dict[str, Any]) -> StatusCodes:
         """Play given media id."""
         try:
             media_id = quote_plus(params.get("media_id", ""))
@@ -534,6 +546,6 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             _LOG.debug("Play media : %s (%s)", params, url)
             await self.app_url(url)
             return StatusCodes.OK
-        except Exception as e:  # pylint: disable=W0718
+        except Exception as e:  # noqa: BLE001
             _LOG.error("Error while playing media %s", e)
         return StatusCodes.BAD_REQUEST

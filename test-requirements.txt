@@ -1,2 +1,4 @@
-ruff==0.15.13
-pyright==1.1.409
+ruff==0.15.21
+pyright==1.1.411
+pytest==9.1.1
+pytest-asyncio==1.4.0

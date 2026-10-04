@@ -33,6 +33,19 @@ import setup_flow
 import tv
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
+
+# Opt-in low-level protocol logging for diagnosing tvOS/pyatv regressions.
+# Keep it disabled by default: RTSP/AirPlay logs can be very verbose.
+if os.getenv("UC_APPLETV_PROTOCOL_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}:
+    for logger_name in (
+        "pyatv.protocols.airplay",
+        "pyatv.protocols.airplay.ap2_session",
+        "pyatv.support.rtsp",
+        "pyatv.support.http",
+    ):
+        logging.getLogger(logger_name).setLevel(logging.DEBUG)
+    _LOG.warning("Apple TV protocol debug logging enabled (UC_APPLETV_PROTOCOL_DEBUG)")
+
 if sys.platform == "win32":
     windows_policy = cast("Any", asyncio).WindowsSelectorEventLoopPolicy()
     asyncio.set_event_loop_policy(windows_policy)  # pyright: ignore[reportDeprecated]
@@ -388,12 +401,12 @@ async def main() -> None:
     await api.init("driver.json", setup_flow.driver_setup_handler)
     # temporary hack to change driver.json language texts until supported by the wrapper lib
     # Attention: keep in sync with `custom_config.py`!
-    api._driver_info["description"] = _a(
+    api._driver_info["description"] = _a(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         "Control your Apple TV with Remote Two/3."
-    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    api._driver_info["setup_data_schema"] = (
+    )
+    api._driver_info["setup_data_schema"] = (  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         setup_flow.setup_data_schema()
-    )  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    )
 
 
 if __name__ == "__main__":
