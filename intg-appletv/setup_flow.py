@@ -576,7 +576,6 @@ async def _handle_user_data_airplay_pin(
     :param msg: response data from the requested user data
     :return: the setup action on how to continue
     """
-    global _setup_step
 
     _LOG.debug("User has entered the AirPlay PIN")
 
