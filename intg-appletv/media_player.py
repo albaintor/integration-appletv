@@ -323,6 +323,8 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             case Commands.GUIDE:
                 res = await self._device.toggle_guide()
             case Commands.PLAY_MEDIA:
+                if params is None:
+                    return StatusCodes.BAD_REQUEST
                 res = await self.play_media(params)
             # --- simple commands ---
             case SimpleCommands.TOP_MENU:
@@ -433,6 +435,7 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             _LOG.debug("[%s] App URL error %s", self._device.address, ex)
             return None
 
+    @override
     async def browse(self, options: BrowseOptions) -> BrowseResults | StatusCodes:
         """
         Execute entity browsing request.
@@ -462,11 +465,17 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             )
             _LOG.debug("[%s] Browse media %s (%s)", self._device.address, options, url)
             data = await self.app_url(url)
-            return BrowseResults(media=BrowseMediaItem(**data.get("media")), pagination=pagination)
+            if not isinstance(data, dict):
+                return StatusCodes.BAD_REQUEST
+            media = data.get("media")
+            if not isinstance(media, dict):
+                return StatusCodes.BAD_REQUEST
+            return BrowseResults(media=BrowseMediaItem(**media), pagination=pagination)
         except Exception as e:  # noqa: BLE001
             _LOG.error("[%s] Error while browsing media %s", self._device.address, e)
         return StatusCodes.BAD_REQUEST
 
+    @override
     async def search(self, options: SearchOptions) -> SearchResults | StatusCodes:
         """
         Execute a media search request.
@@ -513,12 +522,17 @@ class AppleTVMediaPlayer(MediaPlayer, AppleTVEntity):
             )
             _LOG.debug("Search media %s (%s)", options, url)
             data = await self.app_url(url)
-            return SearchResults(media=[BrowseMediaItem(**item) for item in data.get("media")], pagination=pagination)
+            if not isinstance(data, dict):
+                return StatusCodes.BAD_REQUEST
+            media = data.get("media")
+            if not isinstance(media, list) or not all(isinstance(item, dict) for item in media):
+                return StatusCodes.BAD_REQUEST
+            return SearchResults(media=[BrowseMediaItem(**item) for item in media], pagination=pagination)
         except Exception as e:  # noqa: BLE001
             _LOG.error("Error while searching media %s", e)
         return StatusCodes.BAD_REQUEST
 
-    async def play_media(self, params: dict[str, Any]):
+    async def play_media(self, params: dict[str, Any]) -> StatusCodes:
         """Play given media id."""
         try:
             media_id = quote_plus(params.get("media_id", ""))
