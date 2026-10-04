@@ -467,8 +467,7 @@ async def _handle_backup_restore_step() -> RequestUserInput:
     return RequestUserInput(
         {
             "en": "Backup or restore devices configuration (all existing devices will be removed)",
-            "fr": "Sauvegarder ou restaurer la configuration des appareils (tous les appareils "
-            "existants seront supprimés)",
+            "fr": "Sauvegarder ou restaurer la configuration des appareils (tous les appareils existants seront supprimés)",
         },
         [
             {
