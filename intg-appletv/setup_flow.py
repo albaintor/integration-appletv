@@ -752,10 +752,8 @@ async def _handle_device_reconfigure(msg: UserDataResponse) -> SetupComplete | S
     global_volume = msg.input_values.get("global_volume", "true") == "true"
     media_browsing = msg.input_values.get("media_browsing", "false") == "true"
     media_browsing_port = 8000
-    try:
+    with contextlib.suppress(ValueError):
         media_browsing_port = int(msg.input_values.get("media_browsing_port", "8000"))
-    except ValueError:
-        pass
     media_search_catalog = msg.input_values.get("media_search_catalog", "true") == "true"
 
     if mac_address == "" and manual_mac_address == "":
