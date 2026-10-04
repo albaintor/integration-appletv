@@ -246,7 +246,7 @@ class Devices:
                 json.dump(self._config, f, ensure_ascii=False, cls=_EnhancedJSONEncoder)
             return result
         # pylint: disable = W0718
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
             result = ConfigImportResult.ERROR
             _LOG.error(
                 "Cannot import the updated configuration %s, keeping existing configuration : %s", updated_config, ex
