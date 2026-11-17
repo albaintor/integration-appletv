@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from config import AtvDevice
-from tv import AppleTv
+from tv import AppleTv, ConnectResult
 
 
 @pytest.mark.asyncio
@@ -16,10 +16,10 @@ async def test_repeated_connect_uses_one_supervisor_and_disconnect_waits_for_can
     started = asyncio.Event()
     never_complete = asyncio.Event()
 
-    async def fake_connect_once() -> bool:
+    async def fake_connect_once(stall_timeout: float | None = None) -> ConnectResult:
         started.set()
         await never_complete.wait()
-        return False
+        return ConnectResult.FAILED
 
     monkeypatch.setattr(atv, "_connect_once", fake_connect_once)
 
