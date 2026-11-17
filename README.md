@@ -41,9 +41,11 @@ succeed, but the AirPlay 2 MRP remote-control tunnel can time out with
 overlapping reconnect loops so this failure can be diagnosed correctly.
 
 Supported versions:
+
 - Apple TV 4 and newer models with tvOS 16+
 
 Supported attributes:
+
 - State (on, off, playing, paused, unknown)
 - Title
 - Album
@@ -54,6 +56,7 @@ Supported attributes:
 - Sound mode (list of output device(s) streamed to)
 
 Supported commands:
+
 - Turn on & off (device will be put into standby)
 - Next / Previous
 - Rewind / Fast-forward
@@ -72,6 +75,7 @@ Supported commands:
 - Play media
 
 Please note:
+
 - Certain commands like channel up & down are app dependant and don't work with every app!
 - Not every app provides media information and artwork.
 
@@ -89,18 +93,20 @@ issue in the library with all the required information to reproduce it.
 - [Zeroconf](https://en.m.wikipedia.org/wiki/Zero-configuration_networking) (multicast DNS) must be a allowed.  
   Check your WiFi access point and router that this traffic is not filtered out.
 - When using DHCP: a static IP address reservation for the Apple TV device(s) is recommended.  
-  This speeds up reconnection and helps to identify the device again if Apple changes the (not so) unique device identifiers. 
+  This speeds up reconnection and helps to identify the device again if Apple changes the (not so) unique device
+  identifiers.
 
 ### Apple TV device
 
 - Make sure you have  _"Allow Access"_ set to _"Anyone on the Same Network"_ for AirPlay on your Apple TV.
-- When using multiple Apple TVs, each device should have a unique name for easier identification.  
-  - The name can be set under Settings, General, About: Name  
+- When using multiple Apple TVs, each device should have a unique name for easier identification.
+    - The name can be set under Settings, General, About: Name
 - The name should not be changed anymore once the Apple TV is connected with this integration.  
   This helps to identify the device again if the device identifiers change after a tvOS update.
-- Disabling automatic software updates is recommended, especially if you rely on controlling an Apple TV with an Unfolded Circle Remote.
-  - tvOS updates might break certain functionality.
-  - It can take time to fix these issues and release a new integration version.
+- Disabling automatic software updates is recommended, especially if you rely on controlling an Apple TV with an
+  Unfolded Circle Remote.
+    - tvOS updates might break certain functionality.
+    - It can take time to fix these issues and release a new integration version.
 
 ## Usage
 
@@ -109,6 +115,7 @@ issue in the library with all the required information to reproduce it.
 - Requires Python 3.11
 - Install required libraries:  
   (using a [virtual environment](https://docs.python.org/3/library/venv.html) is highly recommended)
+
 ```shell
 pip3 install -r requirements.txt
 ```
@@ -116,10 +123,10 @@ pip3 install -r requirements.txt
 - The integration is runnable without updating the language files or compiling the .po files!  
   If a language file is missing, the language key is used which in most cases is identical to the English language text.
 - Optional: compile gettext translation files:
-  - This requires `msgfmt` from the GNU gettext utilities.
-  - See [docs/i18n.md](docs/i18n.md) for more information.
-  - Helper Makefile:
-  
+    - This requires `msgfmt` from the GNU gettext utilities.
+    - See [docs/i18n.md](docs/i18n.md) for more information.
+    - Helper Makefile:
+
 ```shell
 cd intg-appletv/locales
 make all
@@ -129,7 +136,7 @@ For running a separate integration driver on your network for Remote Two/3, the 
 [driver.json](driver.json) needs to be changed:
 
 - Set `driver_id` to a unique value, `uc_appletv_driver` is already used for the embedded driver in the firmware.
-- Change `name` to easily identify the driver for discovery & setup  with Remote Two/3 or the web-configurator.
+- Change `name` to easily identify the driver for discovery & setup with Remote Two/3 or the web-configurator.
 - Optionally add a `"port": 8090` field for the WebSocket server listening port.
     - Default port: `9090`
     - This is also overrideable with environment variable `UC_INTEGRATION_HTTP_PORT`
@@ -140,8 +147,10 @@ For running a separate integration driver on your network for Remote Two/3, the 
 UC_CONFIG_HOME=./ python3 intg-appletv/driver.py
 ```
 
-See available [environment variables](https://github.com/unfoldedcircle/integration-python-library#environment-variables)
-in the Python integration library to control certain runtime features like listening interface and configuration directory.
+See
+available [environment variables](https://github.com/unfoldedcircle/integration-python-library#environment-variables)
+in the Python integration library to control certain runtime features like listening interface and configuration
+directory.
 
 The configuration file is loaded & saved from the path specified in the environment variable `UC_CONFIG_HOME`.
 Otherwise, the `HOME` path is used or the working directory as fallback.
@@ -161,6 +170,7 @@ To do that, we use [PyInstaller](https://pyinstaller.org/), but it needs to run 
 `PyInstaller` does not support cross compilation.
 
 The `--onefile` option to create a one-file bundled executable should be avoided:
+
 - Higher startup cost, since the wrapper binary must first extract the archive.
 - Files are extracted to the /tmp directory on the device, which is an in-memory filesystem.  
   This will further reduce the available memory for the integration drivers!
@@ -168,12 +178,14 @@ The `--onefile` option to create a one-file bundled executable should be avoided
 ### x86-64 Linux
 
 On x86-64 Linux we need Qemu to emulate the aarch64 target platform:
+
 ```bash
 sudo apt install qemu-system-arm binfmt-support qemu-user-static
 docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 ```
 
 Run PyInstaller:
+
 ```shell
 docker run --rm --name builder \
     --platform=aarch64 \
@@ -189,6 +201,7 @@ docker run --rm --name builder \
 ### aarch64 Linux / Mac
 
 On an aarch64 host platform, the build image can be run directly (and much faster):
+
 ```shell
 docker run --rm --name builder \
     --user=$(id -u):$(id -g) \
