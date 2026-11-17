@@ -733,63 +733,69 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
     async def _connect_loop(self) -> None:
         """Supervise connection attempts without allowing overlapping loops."""
         current_task = asyncio.current_task()
-        _LOG.debug("[%s] Starting connect loop", self.log_id)
-        start = self._loop.time()
-        tries, network_retries = await self._try_connect()
-
-        _LOG.debug("[%s] Connect loop ended", self.log_id)
-        self._connect_task = None
-
-        # Safety check for future refactoring and to satisfy linter
-        if not self._atv:
-            _LOG.error("[%s] Connection loop ended without successful connection", self.log_id)
-            return
-
-        # Set up listeners and start push updates.
-        # pyatv blocks the facade immediately after close(), so any access here can raise
-        # BlockedStateError if the connection was lost between _connect_once() returning and
-        # this point.  We set self._atv.listener = self FIRST so that from this point forward
-        # connection_lost/connection_closed callbacks will fire even if we crash mid-setup.
         try:
-            self._atv.listener = self
-            self._atv.push_updater.listener = self
-            self._atv.push_updater.start()
-            self._atv.audio.listener = self
+            _LOG.debug("[%s] Starting connect loop", self.log_id)
+            start = self._loop.time()
+            tries, network_retries = await self._try_connect()
 
-            # Reset the backoff counter
-            self._connection_attempts = 0
-            self._command_timeouts.clear()
+            _LOG.debug("[%s] Connect loop ended", self.log_id)
 
-            await self._start_polling()
+            # Safety check for future refactoring and to satisfy linter
+            if not self._atv:
+                _LOG.error("[%s] Connection loop ended without successful connection", self.log_id)
+                return
 
-            self._refresh_after_connect(self._atv)
+            # Set up listeners and start push updates.
+            # pyatv blocks the facade immediately after close(), so any access here can raise
+            # BlockedStateError if the connection was lost between _connect_once() returning and
+            # this point.  We set self._atv.listener = self FIRST so that from this point forward
+            # connection_lost/connection_closed callbacks will fire even if we crash mid-setup.
+            try:
+                self._atv.listener = self
+                self._atv.push_updater.listener = self
+                self._atv.push_updater.start()
+                self._atv.audio.listener = self
 
-            self.events.emit(EVENTS.CONNECTED, self._device.identifier)
-            # Always send the current output device: it may have changed during sleep, and an output devices
-            # scan only sends an update if the list of devices changed.
-            self.events.emit(EVENTS.UPDATE, self._device.identifier, {MediaAttr.SOUND_MODE: self.output_devices})
-            _LOG.debug(
-                "[%s] Connected in %.2fs (%d tries, %d network retries)",
-                self.log_id,
-                self._loop.time() - start,
-                tries,
-                network_retries,
-            )
-        except pyatv.exceptions.BlockedStateError as err:
-            # The pyatv facade was already closed/blocked before we could finish setup.
-            # This happens when the remote side drops the connection in the narrow window
-            # after pyatv.connect() returns but before our listener is fully wired up.
-            # Trigger a clean disconnect so the reconnect loop restarts.
-            _LOG.warning(
-                "[%s] Connection was lost during post-connect setup (%s): %s",
-                self.log_id,
-                err.args[0] if err.args else "blocked",
-                err,
-            )
-            self._handle_disconnect()
-        except Exception as err:  # noqa: BLE001
-            _LOG.exception("[%s] Error during post-connect setup, reconnecting: %s", self.log_id, err)
-            self._handle_disconnect(force=True)
+                # Reset the backoff counter
+                self._connection_attempts = 0
+                self._command_timeouts.clear()
+
+                await self._start_polling()
+
+                self._refresh_after_connect(self._atv)
+
+                self.events.emit(EVENTS.CONNECTED, self._device.identifier)
+                # Always send the current output device: it may have changed during sleep, and an output devices
+                # scan only sends an update if the list of devices changed.
+                self.events.emit(EVENTS.UPDATE, self._device.identifier, {MediaAttr.SOUND_MODE: self.output_devices})
+                _LOG.debug(
+                    "[%s] Connected in %.2fs (%d tries, %d network retries)",
+                    self.log_id,
+                    self._loop.time() - start,
+                    tries,
+                    network_retries,
+                )
+            except pyatv.exceptions.BlockedStateError as err:
+                # The pyatv facade was already closed/blocked before we could finish setup.
+                # This happens when the remote side drops the connection in the narrow window
+                # after pyatv.connect() returns but before our listener is fully wired up.
+                # Trigger a clean disconnect so the reconnect loop restarts.
+                _LOG.warning(
+                    "[%s] Connection was lost during post-connect setup (%s): %s",
+                    self.log_id,
+                    err.args[0] if err.args else "blocked",
+                    err,
+                )
+                self._handle_disconnect()
+            except Exception as err:  # noqa: BLE001
+                _LOG.exception("[%s] Error during post-connect setup, reconnecting: %s", self.log_id, err)
+                self._handle_disconnect(force=True)
+        except asyncio.CancelledError:
+            _LOG.debug("[%s] Connect loop cancelled", self.log_id)
+            raise
+        finally:
+            if self._connect_task is current_task:
+                self._connect_task = None
 
     async def _try_connect(self) -> tuple[int, int]:
         """Connect until connected, disabled or authentication failed. Return the tries and network retries."""
@@ -1009,22 +1015,6 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             # captured above completed.
             if self._connect_task is connect_task:
                 self._connect_task = None
-
-    def update_config(self, device: AtvDevice) -> None:
-        """
-        Swap in a reconfigured device (e.g. new address / mac_address / credentials).
-
-        This drops the cached, resolved Apple TV configuration so the next connection
-        attempt re-resolves the device with `_find_atv()` using the updated address and
-        mac_address, instead of silently continuing to use the stale one.
-
-        Does not itself disconnect or reconnect: callers that want the new configuration
-        to take effect immediately should `disconnect()` before and `connect()` after.
-        """
-        if not device.credentials:
-            device.credentials = []
-        self._device = device
-        self._apple_tv_conf = None
 
     def update_config(self, device: AtvDevice) -> None:
         """
