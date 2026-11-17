@@ -518,7 +518,10 @@ async def _handle_device_choice(msg: UserDataResponse) -> RequestUserInput | Req
 
     # Create a new AppleTv object
     # TODO exception handling?
-    atvs = await pyatv.scan(asyncio.get_event_loop(), identifier=choice, hosts=[str(atv.address)])
+    # Manual entry: prefer to use the provided IP as filter - fallback to broad discovery
+    # Automatic entry: relies on 100% mDNS
+    search_hosts = [str(atv.address)] if _manual_address else None
+    atvs = await discover.apple_tvs(asyncio.get_event_loop(), identifier=choice, hosts=search_hosts)
     if not atvs:
         _LOG.error("Cannot connect the chosen Apple TV: %s", choice)
         return SetupError(error_type=IntegrationSetupError.NOT_FOUND)
