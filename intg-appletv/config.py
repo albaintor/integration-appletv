@@ -105,6 +105,7 @@ class Devices:
         data_path: str,
         add_handler: Callable[[AtvDevice], None] | None,
         remove_handler: Callable[[AtvDevice | None], None] | None,
+        update_handler: Callable[[AtvDevice], None] | None = None,
     ) -> None:
         """
         Create a configuration instance for the given configuration path.
@@ -116,6 +117,7 @@ class Devices:
         self._config: list[AtvDevice] = []
         self._add_handler = add_handler
         self._remove_handler = remove_handler
+        self._update_handler = update_handler
         self.load()
         self._config_lock = Lock()
 
@@ -155,7 +157,7 @@ class Devices:
 
     def update(self, atv: AtvDevice) -> bool:
         """Update a configured Apple TV device and persist configuration."""
-        for item in self._config:
+        for i, item in enumerate(self._config):
             if item.identifier == atv.identifier:
                 for f in fields(atv):
                     setattr(item, f.name, getattr(atv, f.name))
