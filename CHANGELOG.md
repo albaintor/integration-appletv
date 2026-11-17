@@ -11,6 +11,17 @@ _Changes in the next release_
 
 ---
 
+## v1.24.0 - 2026-11-17
+### Fixed
+- Sync discovery of Apple TV 4K (4th generation) and future model identification from upstream 0.26.1.
+- Integrate upstream 0.25.0–0.26.1 improvements to reconnection, application discovery, connection startup, connection cleanup and timeout handling.
+- Retain custom media browsing, search, reconfiguration, backup/restore, and tvOS 27 pairing support.
+
+### Changed
+- Sync upstream tests, connection-state specifications, dependency tooling, and CI workflows.
+- Keep pyatv pinned at 0.18.0, the latest stable release also used by upstream.
+- Bump this fork's minor release from 1.23.0 to 1.24.0.
+
 ## v1.23.0 - 2026-10-04
 ### Fixed
 - Prevent overlapping Apple TV connection supervisors by propagating task cancellation and awaiting in-flight connect tasks during disconnect.
