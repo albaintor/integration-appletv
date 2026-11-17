@@ -157,7 +157,7 @@ class Devices:
 
     def update(self, atv: AtvDevice) -> bool:
         """Update a configured Apple TV device and persist configuration."""
-        for i, item in enumerate(self._config):
+        for item in self._config:
             if item.identifier == atv.identifier:
                 for f in fields(atv):
                     setattr(item, f.name, getattr(atv, f.name))
