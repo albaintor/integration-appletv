@@ -959,21 +959,32 @@ class AppleTv(interface.AudioListener, interface.DeviceListener):
             task.result().close()
 
     async def disconnect(self) -> None:
-        """Disconnect from ATV."""
+        """Disconnect from ATV and wait for any in-flight connect task to stop."""
         _LOG.debug("[%s] Disconnecting from device", self.log_id)
         self._is_enabled = False
         await self._stop_polling()
 
+        connect_task = self._connect_task
         try:
-            if self._atv:
-                self._atv.close()
-            if self._connect_task:
-                self._connect_task.cancel()
+            # Detach first: atv.close() may synchronously trigger connection_closed().
+            atv = self._atv
+            self._atv = None
+            if atv:
+                atv.close()
+
+            if connect_task and connect_task is not asyncio.current_task() and not connect_task.done():
+                connect_task.cancel()
+                try:
+                    await connect_task
+                except asyncio.CancelledError:
+                    _LOG.debug("[%s] In-flight connect task cancelled", self.log_id)
         except Exception as err:  # noqa: BLE001
             _LOG.exception("[%s] An error occurred while disconnecting: %s", self.log_id, err)
         finally:
-            self._atv = None
-            self._connect_task = None
+            # Do not clear a newer task that may have been installed after the one
+            # captured above completed.
+            if self._connect_task is connect_task:
+                self._connect_task = None
 
     def update_config(self, device: AtvDevice) -> None:
         """
